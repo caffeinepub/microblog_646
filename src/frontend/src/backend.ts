@@ -153,9 +153,18 @@ import type { ArtistPageResponse as _ArtistPageResponse, ExternalBlob as _Extern
 
 // ── Type conversion helpers ───────────────────────────────────────────────────
 
+/**
+ * Safely download an optional blob. Returns undefined instead of throwing if
+ * the hash is stale, unreachable, or otherwise invalid. This prevents a single
+ * bad image from crashing an entire feed or profile page load.
+ */
 async function downloadOptBlob(downloadFile, optBlob) {
     if (!optBlob || optBlob.length === 0) return undefined;
-    return await downloadFile(optBlob[0]);
+    try {
+        return await downloadFile(optBlob[0]);
+    } catch {
+        return undefined;
+    }
 }
 
 function optText(opt) {
@@ -355,11 +364,11 @@ export class Backend implements backendInterface {
                 username: r.username,
                 displayName: r.displayName,
                 createdAt: r.createdAt,
-                website: r.website.length > 0 ? r.website[0] : undefined,
+                website: (r.website && r.website.length > 0) ? r.website[0] : undefined,
                 updatedAt: r.updatedAt,
-                headerImageHash: r.headerImageHash.length > 0 ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
-                profilePictureHash: r.profilePictureHash.length > 0 ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
-                location: r.location.length > 0 ? r.location[0] : undefined,
+                headerImageHash: (r.headerImageHash && r.headerImageHash.length > 0) ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
+                profilePictureHash: (r.profilePictureHash && r.profilePictureHash.length > 0) ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
+                location: (r.location && r.location.length > 0) ? r.location[0] : undefined,
             };
         });
     }
@@ -575,8 +584,10 @@ export class Backend implements backendInterface {
 
     async repostPost(postId) {
         return this._call(async () => {
-            // Creates a repost from fan profile by default
-            return this.actor.createPost("", [], [], { repost: postId }, { fan: null });
+            // The backend requires text.size() > 0 for all post types.
+            // Reposts store a single space as placeholder text; the UI
+            // renders a repost by showing the original post, not this text.
+            return this.actor.createPost(" ", [], [], { repost: postId }, { fan: null });
         });
     }
 
@@ -670,16 +681,16 @@ export class Backend implements backendInterface {
             createdAt: r.createdAt,
             tier: r.tier,
             bandName: r.bandName,
-            website: r.website.length > 0 ? r.website[0] : undefined,
+            website: (r.website && r.website.length > 0) ? r.website[0] : undefined,
             updatedAt: r.updatedAt,
             genre: r.genre,
             musicLinks: r.musicLinks,
             followerCount: r.followerCount,
-            headerImageHash: r.headerImageHash.length > 0 ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
+            headerImageHash: (r.headerImageHash && r.headerImageHash.length > 0) ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
             followingCount: r.followingCount,
             isFollowedByCurrentUser: r.isFollowedByCurrentUser,
-            profilePictureHash: r.profilePictureHash.length > 0 ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
-            location: r.location.length > 0 ? r.location[0] : undefined,
+            profilePictureHash: (r.profilePictureHash && r.profilePictureHash.length > 0) ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
+            location: (r.location && r.location.length > 0) ? r.location[0] : undefined,
         };
     }
 }

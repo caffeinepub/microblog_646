@@ -164,21 +164,10 @@ export async function createActorWithConfig(
   };
 
   const downloadFile = async (bytes: Uint8Array): Promise<ExternalBlob> => {
-    try {
-      const hashWithPrefix = new TextDecoder().decode(new Uint8Array(bytes));
-      if (!hashWithPrefix.startsWith(MOTOKO_DEDUPLICATION_SENTINEL)) {
-        return ExternalBlob.fromBytes(new Uint8Array(0));
-      }
-      const hash = hashWithPrefix.substring(MOTOKO_DEDUPLICATION_SENTINEL.length);
-      if (!hash) {
-        return ExternalBlob.fromBytes(new Uint8Array(0));
-      }
-      const url = await storageClient.getDirectURL(hash);
-      return ExternalBlob.fromURL(url);
-    } catch (err) {
-      console.warn("Failed to download blob, skipping:", err);
-      return ExternalBlob.fromBytes(new Uint8Array(0));
-    }
+    const hashWithPrefix = new TextDecoder().decode(new Uint8Array(bytes));
+    const hash = hashWithPrefix.substring(MOTOKO_DEDUPLICATION_SENTINEL.length);
+    const url = await storageClient.getDirectURL(hash);
+    return ExternalBlob.fromURL(url);
   };
 
   return createActor(
