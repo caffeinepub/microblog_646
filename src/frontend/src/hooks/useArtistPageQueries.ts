@@ -61,11 +61,13 @@ export function useCreateOrUpdateArtistPage() {
 
   return useMutation({
     mutationFn: async ({
+      username,
       bandName,
       genre,
       bio,
       musicLinks,
     }: {
+      username: string;
       bandName: string;
       genre: string;
       bio: string;
@@ -73,6 +75,7 @@ export function useCreateOrUpdateArtistPage() {
     }) => {
       if (!actor) throw new Error("Actor not ready");
       await actor.createOrUpdateArtistPage(
+        username,
         bandName,
         genre,
         bio,

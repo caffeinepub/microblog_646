@@ -1,6 +1,5 @@
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,7 +14,6 @@ import {
   Camera,
   Loader2,
   MoreHorizontal,
-  Music,
   PenLine,
   Search,
   ShieldBan,
@@ -26,7 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useArtistPageByUsername } from "../hooks/useArtistPageQueries";
+import { useActiveProfile } from "../contexts/ActiveProfileContext";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useMediaUpload } from "../hooks/useMediaUpload";
 import {
@@ -43,7 +41,6 @@ import {
   useUpdateProfilePicture,
 } from "../hooks/useQueries";
 import { fromNanoseconds, getInitials } from "../utils/formatting";
-import { ArtistPageSection } from "./ArtistPageSection";
 import { BackButton } from "./BackButton";
 import { EditProfileDialog } from "./EditProfileDialog";
 import { FeedSkeleton } from "./FeedSkeleton";
@@ -58,6 +55,7 @@ export function ProfilePage() {
   const { data: currentUserProfile, isError: isCurrentProfileError } =
     useProfile();
 
+  const { activeProfile } = useActiveProfile();
   const isOwnProfile =
     !isCurrentProfileError &&
     !!currentUserProfile &&
@@ -79,8 +77,6 @@ export function ProfilePage() {
   } = usePostsByUsername(username);
 
   const profilePrincipal = profile?.principal ?? null;
-
-  const { data: artistPage } = useArtistPageByUsername(username);
 
   const { mutate: followUser, isPending: isFollowPending } = useFollowUser();
   const { mutate: unfollowUser, isPending: isUnfollowPending } =
@@ -362,7 +358,7 @@ export function ProfilePage() {
             <div className="h-full w-full bg-muted" />
           )}
         </AspectRatio>
-        {isOwnProfile && (
+        {isOwnProfile && activeProfile === "fan" && (
           <>
             <button
               type="button"
@@ -402,7 +398,7 @@ export function ProfilePage() {
                 )}
                 <AvatarFallback className="text-lg">{initials}</AvatarFallback>
               </Avatar>
-              {isOwnProfile && (
+              {isOwnProfile && activeProfile === "fan" && (
                 <>
                   <button
                     type="button"
@@ -427,23 +423,16 @@ export function ProfilePage() {
               )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold leading-tight">
-                  {profile.displayName}
-                </h2>
-                {artistPage && (
-                  <Badge variant="secondary" className="text-xs">
-                    Artist
-                  </Badge>
-                )}
-              </div>
+              <h2 className="text-lg font-bold leading-tight">
+                {profile.displayName}
+              </h2>
               <p className="text-sm text-muted-foreground">
                 @{profile.username}
               </p>
             </div>
           </div>
 
-          {isOwnProfile && (
+          {isOwnProfile && activeProfile === "fan" && (
             <Button
               variant="outline"
               size="sm"
@@ -571,43 +560,6 @@ export function ProfilePage() {
           </Link>
         </div>
       </div>
-
-      {/* Artist page info */}
-      {artistPage && !isOwnProfile && (
-        <div className="border-t px-4 py-3 flex items-center gap-2">
-          <Music className="h-4 w-4 text-primary" />
-          <Link
-            to="/artist/$username"
-            params={{ username }}
-            className="text-sm font-medium text-primary hover:underline"
-            data-ocid="artist-page.link.1"
-          >
-            View Artist Page: {artistPage.bandName}
-          </Link>
-        </div>
-      )}
-      {isOwnProfile && artistPage && (
-        <div className="border-t px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Music className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">{artistPage.bandName}</span>
-              <span className="text-xs text-muted-foreground">
-                · {artistPage.genre}
-              </span>
-            </div>
-            <Link
-              to="/artist/$username"
-              params={{ username }}
-              className="text-xs text-primary hover:underline"
-              data-ocid="artist-page.link.2"
-            >
-              View Artist Page
-            </Link>
-          </div>
-        </div>
-      )}
-      {isOwnProfile && !artistPage && <ArtistPageSection />}
 
       {/* Post timeline */}
       {profile.isBlockedByCurrentUser && !showBlockedPosts ? (

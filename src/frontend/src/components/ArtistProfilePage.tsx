@@ -2,12 +2,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { Camera, Loader2, Music } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useActiveProfile } from "../contexts/ActiveProfileContext";
 import {
   useArtistFeed,
+  useArtistPage,
   useArtistPageByUsername,
   useFollowArtist,
   useUnfollowArtist,
@@ -16,9 +18,9 @@ import {
 } from "../hooks/useArtistPageQueries";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useMediaUpload } from "../hooks/useMediaUpload";
-import { useProfile } from "../hooks/useQueries";
 import { getInitials } from "../utils/formatting";
 import { BackButton } from "./BackButton";
+import { EditArtistProfileDialog } from "./EditArtistProfileDialog";
 import { FeedSkeleton } from "./FeedSkeleton";
 import { PostCard } from "./PostCard";
 
@@ -26,9 +28,8 @@ const artistRouteApi = getRouteApi("/artist/$username");
 
 export function ArtistProfilePage() {
   const { username } = artistRouteApi.useParams();
-  const navigate = useNavigate();
-
-  const { data: currentUserProfile } = useProfile();
+  const { data: myArtistPage } = useArtistPage();
+  const { activeProfile } = useActiveProfile();
   const {
     data: artistPage,
     isLoading,
@@ -36,8 +37,8 @@ export function ArtistProfilePage() {
   } = useArtistPageByUsername(username);
 
   const isOwner =
-    !!currentUserProfile &&
-    currentUserProfile.username.toLowerCase() === username.toLowerCase();
+    !!myArtistPage &&
+    myArtistPage.username.toLowerCase() === username.toLowerCase();
 
   const {
     data: feedData,
@@ -72,6 +73,7 @@ export function ArtistProfilePage() {
     MediaInput: HeaderImageInput,
   } = useMediaUpload("image");
 
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState<
     number | null
   >(null);
@@ -323,16 +325,16 @@ export function ArtistProfilePage() {
 
           {/* Action buttons */}
           <div className="flex gap-2 pt-3">
-            {isOwner ? (
+            {isOwner && activeProfile === "artist" ? (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate({ to: `/${username}` as any })}
+                onClick={() => setIsEditOpen(true)}
                 data-ocid="artist-profile.edit_button"
               >
-                Edit Artist Page
+                Edit Profile
               </Button>
-            ) : artistPage.isFollowedByCurrentUser ? (
+            ) : !isOwner && artistPage.isFollowedByCurrentUser ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -345,7 +347,7 @@ export function ArtistProfilePage() {
                 )}
                 Following
               </Button>
-            ) : (
+            ) : !isOwner ? (
               <Button
                 size="sm"
                 onClick={() => followArtist(artistPage.principal)}
@@ -357,7 +359,7 @@ export function ArtistProfilePage() {
                 )}
                 Follow
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -457,6 +459,13 @@ export function ArtistProfilePage() {
             </div>
           )}
         </div>
+      )}
+      {isOwner && artistPage && (
+        <EditArtistProfileDialog
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          artistPage={artistPage}
+        />
       )}
     </div>
   );

@@ -70,6 +70,7 @@ export const ArtistPageResponse = IDL.Record({
   'bio' : IDL.Text,
   'postCount' : IDL.Nat,
   'principal' : IDL.Principal,
+  'username' : IDL.Text,
   'createdAt' : Time,
   'tier' : IDL.Text,
   'bandName' : IDL.Text,
@@ -163,7 +164,14 @@ export const idlService = IDL.Service({
   'blockUser' : IDL.Func([IDL.Principal], [], []),
   'checkUsernameAvailability' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
   'createOrUpdateArtistPage' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Opt(IDL.Text)],
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Vec(IDL.Text),
+        IDL.Opt(IDL.Text),
+      ],
       [],
       [],
     ),
@@ -177,6 +185,8 @@ export const idlService = IDL.Service({
       [PostResponse],
       [],
     ),
+  'deletePost' : IDL.Func([IDL.Nat], [], []),
+  'editPost' : IDL.Func([IDL.Nat, IDL.Text], [PostResponse], []),
   'followArtist' : IDL.Func([IDL.Principal], [], []),
   'followUser' : IDL.Func([IDL.Principal], [], []),
   'getArtistFeed' : IDL.Func(
@@ -215,9 +225,30 @@ export const idlService = IDL.Service({
       [PaginatedFollows],
       ['query'],
     ),
+  'getGlobalFeed' : IDL.Func(
+      [IDL.Opt(IDL.Nat), IDL.Nat],
+      [PaginatedPosts],
+      ['query'],
+    ),
+  'getHomeFeed' : IDL.Func(
+      [IDL.Opt(IDL.Nat), IDL.Nat],
+      [PaginatedPosts],
+      ['query'],
+    ),
   'getNotifications' : IDL.Func(
       [IDL.Opt(IDL.Nat), IDL.Nat],
       [PaginatedNotifications],
+      ['query'],
+    ),
+  'getPost' : IDL.Func([IDL.Nat], [IDL.Opt(PostResponse)], ['query']),
+  'getPostsByHashtag' : IDL.Func(
+      [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
+      [PaginatedPosts],
+      ['query'],
+    ),
+  'getPostsByPrincipal' : IDL.Func(
+      [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+      [PaginatedPosts],
       ['query'],
     ),
   'getPostsByUsername' : IDL.Func(
@@ -347,6 +378,7 @@ export const idlFactory = ({ IDL }) => {
     'bio' : IDL.Text,
     'postCount' : IDL.Nat,
     'principal' : IDL.Principal,
+    'username' : IDL.Text,
     'createdAt' : Time,
     'tier' : IDL.Text,
     'bandName' : IDL.Text,
@@ -437,7 +469,14 @@ export const idlFactory = ({ IDL }) => {
     'blockUser' : IDL.Func([IDL.Principal], [], []),
     'checkUsernameAvailability' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
     'createOrUpdateArtistPage' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Opt(IDL.Text)],
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Vec(IDL.Text),
+          IDL.Opt(IDL.Text),
+        ],
         [],
         [],
       ),
@@ -451,6 +490,8 @@ export const idlFactory = ({ IDL }) => {
         [PostResponse],
         [],
       ),
+    'deletePost' : IDL.Func([IDL.Nat], [], []),
+    'editPost' : IDL.Func([IDL.Nat, IDL.Text], [PostResponse], []),
     'followArtist' : IDL.Func([IDL.Principal], [], []),
     'followUser' : IDL.Func([IDL.Principal], [], []),
     'getArtistFeed' : IDL.Func(
@@ -489,9 +530,30 @@ export const idlFactory = ({ IDL }) => {
         [PaginatedFollows],
         ['query'],
       ),
+    'getGlobalFeed' : IDL.Func(
+        [IDL.Opt(IDL.Nat), IDL.Nat],
+        [PaginatedPosts],
+        ['query'],
+      ),
+    'getHomeFeed' : IDL.Func(
+        [IDL.Opt(IDL.Nat), IDL.Nat],
+        [PaginatedPosts],
+        ['query'],
+      ),
     'getNotifications' : IDL.Func(
         [IDL.Opt(IDL.Nat), IDL.Nat],
         [PaginatedNotifications],
+        ['query'],
+      ),
+    'getPost' : IDL.Func([IDL.Nat], [IDL.Opt(PostResponse)], ['query']),
+    'getPostsByHashtag' : IDL.Func(
+        [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
+        [PaginatedPosts],
+        ['query'],
+      ),
+    'getPostsByPrincipal' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [PaginatedPosts],
         ['query'],
       ),
     'getPostsByUsername' : IDL.Func(

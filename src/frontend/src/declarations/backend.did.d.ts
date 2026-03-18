@@ -14,6 +14,7 @@ export interface ArtistPageResponse {
   'bio' : string,
   'postCount' : bigint,
   'principal' : Principal,
+  'username' : string,
   'createdAt' : Time,
   'tier' : string,
   'bandName' : string,
@@ -144,7 +145,7 @@ export interface _SERVICE {
   'blockUser' : ActorMethod<[Principal], undefined>,
   'checkUsernameAvailability' : ActorMethod<[string], boolean>,
   'createOrUpdateArtistPage' : ActorMethod<
-    [string, string, string, Array<string>, [] | [string]],
+    [string, string, string, string, Array<string>, [] | [string]],
     undefined
   >,
   'createPost' : ActorMethod<
@@ -155,6 +156,8 @@ export interface _SERVICE {
     [bigint, string, [] | [ExternalBlob], [] | [string]],
     PostResponse
   >,
+  'deletePost' : ActorMethod<[bigint], undefined>,
+  'editPost' : ActorMethod<[bigint, string], PostResponse>,
   'followArtist' : ActorMethod<[Principal], undefined>,
   'followUser' : ActorMethod<[Principal], undefined>,
   'getArtistFeed' : ActorMethod<
@@ -177,9 +180,20 @@ export interface _SERVICE {
   'getArtistPageByUsername' : ActorMethod<[string], [] | [ArtistPageResponse]>,
   'getFollowers' : ActorMethod<[string, bigint, bigint], PaginatedFollows>,
   'getFollowing' : ActorMethod<[string, bigint, bigint], PaginatedFollows>,
+  'getGlobalFeed' : ActorMethod<[[] | [bigint], bigint], PaginatedPosts>,
+  'getHomeFeed' : ActorMethod<[[] | [bigint], bigint], PaginatedPosts>,
   'getNotifications' : ActorMethod<
     [[] | [bigint], bigint],
     PaginatedNotifications
+  >,
+  'getPost' : ActorMethod<[bigint], [] | [PostResponse]>,
+  'getPostsByHashtag' : ActorMethod<
+    [string, [] | [bigint], bigint],
+    PaginatedPosts
+  >,
+  'getPostsByPrincipal' : ActorMethod<
+    [Principal, [] | [bigint], bigint],
+    PaginatedPosts
   >,
   'getPostsByUsername' : ActorMethod<
     [string, [] | [bigint], bigint],

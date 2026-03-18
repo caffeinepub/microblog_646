@@ -2,12 +2,12 @@ import List "mo:core/List";
 import Map "mo:core/Map";
 import Runtime "mo:core/Runtime";
 import Time "mo:core/Time";
+
 import Char "mo:core/Char";
 import Int "mo:core/Int";
 import Storage "blob-storage/Storage";
 import MixinStorage "blob-storage/Mixin";
 import Iter "mo:core/Iter";
-
 
 
 actor {
@@ -24,6 +24,7 @@ actor {
   };
 
   type ArtistPage = {
+    username : Text;
     bandName : Text;
     genre : Text;
     bio : Text;
@@ -37,6 +38,7 @@ actor {
 
   type ArtistPageResponse = {
     principal : Principal;
+    username : Text;
     bandName : Text;
     genre : Text;
     bio : Text;
@@ -164,6 +166,7 @@ actor {
   stable var userProfiles : Map.Map<Principal, UserProfile> = Map.empty();
   stable var artistPages : Map.Map<Principal, ArtistPage> = Map.empty();
   stable var usernameToUser : Map.Map<Text, Principal> = Map.empty();
+  stable var artistUsernameToArtist : Map.Map<Text, Principal> = Map.empty();
   stable var posts : Map.Map<Nat, Post> = Map.empty();
   stable var userPostCounts : Map.Map<Principal, Nat> = Map.empty();
   stable var artistPostCounts : Map.Map<Principal, Nat> = Map.empty();
@@ -181,6 +184,7 @@ actor {
   stable var hashtagIndex : Map.Map<Text, Map.Map<Nat, Bool>> = Map.empty();
   stable var userNotifications : Map.Map<Principal, Map.Map<Nat, Notification>> = Map.empty();
   stable var nextNotificationId : Nat = 0;
+  stable var schemaVersion : Nat = 1;
 
   let maxPostLength : Nat = 280;
   let editDeleteWindowNanos : Int = 900_000_000_000;
@@ -472,7 +476,7 @@ actor {
     let hChars = List.empty<Char>();
     for (c in h.chars()) { hChars.add(c) };
     let nChars = List.empty<Char>();
-    for (c in n.chars()) { nChars.add(c) };
+    for (c in nChars.values()) { };
     let hArr = hChars.toArray();
     let nArr = nChars.toArray();
 
@@ -554,7 +558,12 @@ actor {
           case (null) { "" };
         };
       };
-      case (#artist) { post.author.toText() };
+      case (#artist) {
+        switch (artistPages.get(post.author)) {
+          case (?a) { a.username };
+          case (null) { "" };
+        };
+      };
     };
     let authorDisplayName : Text = switch (authorIdentity) {
       case (#fan) {
@@ -761,7 +770,13 @@ actor {
 
   // ── Artist Page ──────────────────────────────────────────────────────────────
 
-  func validateArtistPageFields(bandName : Text, genre : Text, bio : Text, musicLinks : [Text]) {
+  func validateArtistPageFields(username : Text, bandName : Text, genre : Text, bio : Text, musicLinks : [Text]) {
+    if (username == "") {
+      Runtime.trap("Username cannot be empty");
+    };
+    if (not isValidUsername(username)) {
+      Runtime.trap("Username must be 3-20 characters, alphanumeric and underscores only");
+    };
     if (bandName.size() < 1 or bandName.size() > 100) {
       Runtime.trap("Band name must be 1-100 characters");
     };
@@ -781,12 +796,78 @@ actor {
     };
   };
 
-  public shared ({ caller }) func createOrUpdateArtistPage(bandName : Text, genre : Text, bio : Text, musicLinks : [Text], tier : ?Text) : async () {
+  func toArtistPageResponse(artist : Principal, page : ArtistPage, caller : Principal) : ArtistPageResponse {
+    let followersCount = switch (artistFollowers.get(artist)) {
+      case (?m) { m.size() };
+      case (null) { 0 };
+    };
+    let followingCount = switch (artistFollowing.get(artist)) {
+      case (?m) { m.size() };
+      case (null) { 0 };
+    };
+    let postsCount = switch (artistPostCounts.get(artist)) {
+      case (?n) { n };
+      case (null) { 0 };
+    };
+    let isAuthenticated = not caller.isAnonymous();
+    let isFollowed = if (isAuthenticated) {
+      switch (artistFollowers.get(artist)) {
+        case (?m) { m.get(caller) != null };
+        case (null) { false };
+      };
+    } else { false };
+    {
+      principal = artist;
+      username = page.username;
+      bandName = page.bandName;
+      genre = page.genre;
+      bio = page.bio;
+      musicLinks = page.musicLinks;
+      tier = page.tier;
+      profilePictureHash = page.profilePictureHash;
+      headerImageHash = page.headerImageHash;
+      followerCount = followersCount;
+      followingCount = followingCount;
+      postCount = postsCount;
+      createdAt = page.createdAt;
+      updatedAt = page.updatedAt;
+      isFollowedByCurrentUser = isFollowed;
+    };
+  };
+
+  public shared ({ caller }) func createOrUpdateArtistPage(username : Text, bandName : Text, genre : Text, bio : Text, musicLinks : [Text], tier : ?Text) : async () {
     requireAuth(caller);
-    validateArtistPageFields(bandName, genre, bio, musicLinks);
+    validateArtistPageFields(username, bandName, genre, bio, musicLinks);
+
+    let lower = toLower(username);
+
+    switch (usernameToUser.get(lower)) {
+      case (?_) { Runtime.trap("Username is already taken") };
+      case (null) {};
+    };
+    switch (artistUsernameToArtist.get(lower)) {
+      case (?existingArtist) {
+        if (existingArtist != caller) {
+          Runtime.trap("Username is already taken");
+        };
+      };
+      case (null) {};
+    };
+
+    switch (artistPages.get(caller)) {
+      case (?existing) {
+        let oldLower = toLower(existing.username);
+        if (oldLower != lower) {
+          artistUsernameToArtist.remove(oldLower);
+        };
+      };
+      case (null) {};
+    };
+
     let now = Time.now();
     let existing = artistPages.get(caller);
     let page : ArtistPage = {
+      username;
       bandName;
       genre;
       bio;
@@ -815,21 +896,33 @@ actor {
       updatedAt = now;
     };
     artistPages.add(caller, page);
+    artistUsernameToArtist.add(lower, caller);
   };
 
   public query ({ caller }) func getArtistPage() : async ?ArtistPageResponse {
     requireAuth(caller);
-    buildArtistPageResponse(caller, caller);
+    switch (artistPages.get(caller)) {
+      case (?page) { ?toArtistPageResponse(caller, page, caller) };
+      case (null) { null };
+    };
   };
 
   public query func getArtistPageByPrincipal(principal : Principal) : async ?ArtistPageResponse {
-    buildArtistPageResponse(principal, principal);
+    switch (artistPages.get(principal)) {
+      case (?page) { ?toArtistPageResponse(principal, page, principal) };
+      case (null) { null };
+    };
   };
 
   public query func getArtistPageByUsername(username : Text) : async ?ArtistPageResponse {
     let lower = toLower(username);
-    switch (usernameToUser.get(lower)) {
-      case (?principal) { buildArtistPageResponse(principal, principal) };
+    switch (artistUsernameToArtist.get(lower)) {
+      case (?principal) {
+        switch (artistPages.get(principal)) {
+          case (?page) { ?toArtistPageResponse(principal, page, principal) };
+          case (null) { null };
+        };
+      };
       case (null) { null };
     };
   };
@@ -843,6 +936,7 @@ actor {
     artistPages.add(
       caller,
       {
+        username = existing.username;
         bandName = existing.bandName;
         genre = existing.genre;
         bio = existing.bio;
@@ -865,6 +959,7 @@ actor {
     artistPages.add(
       caller,
       {
+        username = existing.username;
         bandName = existing.bandName;
         genre = existing.genre;
         bio = existing.bio;
@@ -1031,6 +1126,7 @@ actor {
         } else { false };
         ?{
           principal = user;
+          username = profile.username;
           bandName = profile.bandName;
           genre = profile.genre;
           bio = profile.bio;
@@ -1814,6 +1910,13 @@ actor {
     };
     let c = if (caller.isAnonymous()) { null } else { ?caller };
     paginatePosts(start, effectiveLimit, c, func(post) { post.author == user });
+  };
+
+  // Upgrade safety hook.
+  // IMPORTANT: All new fields added to stored record types (UserProfile, ArtistPage, Post, Notification)
+  // MUST be optional (?Type) to ensure backward-compatible Candid deserialization on upgrade.
+  system func postupgrade() {
+    schemaVersion += 1;
   };
 
 };

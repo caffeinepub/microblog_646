@@ -94,22 +94,28 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const activeDisplayName =
     activeProfile === "artist" ? artistPage?.bandName : profile?.displayName;
   const activeSubLabel =
-    activeProfile === "artist"
-      ? "Artist"
+    activeProfile === "artist" && artistPage?.username
+      ? `@${artistPage.username}`
       : profile?.username
         ? `@${profile.username}`
         : "";
   const activeInitials = activeProfile === "artist" ? undefined : fanInitials;
 
-  // Profile link
-  const profilePath =
-    activeProfile === "artist" && profile?.username
-      ? `/artist/${profile.username}`
-      : profile?.username
-        ? `/${profile.username}`
-        : null;
+  // Fan profile link
+  const fanProfilePath = profile?.username ? `/${profile.username}` : null;
 
-  const isProfileActive = profilePath ? currentPath === profilePath : false;
+  // Artist profile link
+  const artistProfilePath = artistPage?.username
+    ? `/artist/${artistPage.username}`
+    : null;
+
+  // Profile link based on active profile
+  const activeProfilePath =
+    activeProfile === "artist" ? artistProfilePath : fanProfilePath;
+
+  const isActiveProfileLinkActive = activeProfilePath
+    ? currentPath === activeProfilePath
+    : false;
 
   return (
     <div className="flex h-full flex-col">
@@ -159,27 +165,42 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
             );
           })}
 
-          {/* Profile link — only shown when username is available */}
-          {profilePath && (
+          {/* Single profile link — shows "Profile" for fan, "Artist Profile" for artist */}
+          {activeProfilePath && (
             <li>
               <Link
-                to={profilePath as string}
+                to={activeProfilePath as string}
                 className={cn(
                   "flex items-center gap-3 rounded-full px-4 py-3 text-[15px] transition-colors",
-                  isProfileActive
+                  isActiveProfileLinkActive
                     ? "font-bold text-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
                 onClick={onNavigate}
-                data-ocid="nav.profile.link"
+                data-ocid={
+                  activeProfile === "artist"
+                    ? "nav.artist_profile.link"
+                    : "nav.profile.link"
+                }
               >
-                <User
-                  className={cn(
-                    "h-5 w-5 shrink-0",
-                    isProfileActive && "stroke-[2.5px]",
-                  )}
-                />
-                <span className="flex-1">Profile</span>
+                {activeProfile === "artist" ? (
+                  <Music
+                    className={cn(
+                      "h-5 w-5 shrink-0",
+                      isActiveProfileLinkActive && "stroke-[2.5px]",
+                    )}
+                  />
+                ) : (
+                  <User
+                    className={cn(
+                      "h-5 w-5 shrink-0",
+                      isActiveProfileLinkActive && "stroke-[2.5px]",
+                    )}
+                  />
+                )}
+                <span className="flex-1">
+                  {activeProfile === "artist" ? "Artist Profile" : "Profile"}
+                </span>
               </Link>
             </li>
           )}
@@ -191,11 +212,11 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
         <div ref={containerRef} className="relative mt-2 px-3 pb-3">
           {/* Popup card */}
           {isOpen && (
-            <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border bg-popover shadow-lg overflow-hidden z-50">
+            <div className="absolute bottom-full left-0 right-0 mb-2 z-50 overflow-hidden rounded-2xl border bg-popover shadow-lg">
               {/* Fan account row */}
               <button
                 type="button"
-                className="flex w-full items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
                 onClick={() => {
                   setActiveProfile("fan");
                   setIsOpen(false);
@@ -222,7 +243,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                     @{profile?.username}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   {unreadCount !== undefined &&
                     unreadCount > 0 &&
                     activeProfile !== "fan" && (
@@ -240,7 +261,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
               {artistPage && (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
                   onClick={() => {
                     setActiveProfile("artist");
                     setIsOpen(false);
@@ -264,10 +285,10 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                       {artistPage.bandName}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                      Artist
+                      @{artistPage.username}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex shrink-0 items-center gap-2">
                     {activeProfile === "artist" && (
                       <Check className="h-4 w-4 text-green-500" />
                     )}
@@ -280,7 +301,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
               {/* Theme toggle */}
               <button
                 type="button"
-                className="flex w-full items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left text-sm"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
                 onClick={() => {
                   setTheme(theme === "dark" ? "light" : "dark");
                   setIsOpen(false);
@@ -298,7 +319,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
               {/* Log out */}
               <button
                 type="button"
-                className="flex w-full items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left text-sm"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
                 onClick={handleLogout}
                 data-ocid="sidebar.logout.button"
               >
@@ -311,7 +332,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
           {/* Bottom bar — active account */}
           <button
             type="button"
-            className="flex w-full items-center gap-3 rounded-full px-3 py-2 hover:bg-accent transition-colors text-left"
+            className="flex w-full items-center gap-3 rounded-full px-3 py-2 text-left transition-colors hover:bg-accent"
             onClick={() => setIsOpen((prev) => !prev)}
             data-ocid="sidebar.account_switcher.button"
           >

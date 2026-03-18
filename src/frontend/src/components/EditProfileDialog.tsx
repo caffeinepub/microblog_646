@@ -68,6 +68,7 @@ export function EditProfileDialog({
   } = useMediaUpload("image");
 
   // Reset form state when dialog opens
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally omit remove callbacks to prevent clearing file selection
   useEffect(() => {
     if (open) {
       setDisplayName(profile.displayName);
@@ -76,13 +77,7 @@ export function EditProfileDialog({
       removeAvatarImage();
       removeHeaderImage();
     }
-  }, [
-    open,
-    profile.bio,
-    profile.displayName,
-    removeAvatarImage,
-    removeHeaderImage,
-  ]);
+  }, [open, profile.bio, profile.displayName]);
 
   const currentAvatarUrl = profile.profilePictureHash?.getDirectURL() ?? null;
   const currentHeaderUrl = profile.headerImageHash?.getDirectURL() ?? null;

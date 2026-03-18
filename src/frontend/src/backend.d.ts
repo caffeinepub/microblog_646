@@ -23,6 +23,7 @@ export interface ArtistPageResponse {
     bio: string;
     postCount: bigint;
     principal: Principal;
+    username: string;
     createdAt: Time;
     tier: string;
     bandName: string;
@@ -147,7 +148,7 @@ export enum AuthorIdentity {
 export interface backendInterface {
     blockUser(user: Principal): Promise<void>;
     checkUsernameAvailability(username: string): Promise<boolean>;
-    createOrUpdateArtistPage(bandName: string, genre: string, bio: string, musicLinks: Array<string>, tier: string | null): Promise<void>;
+    createOrUpdateArtistPage(username: string, bandName: string, genre: string, bio: string, musicLinks: Array<string>, tier: string | null): Promise<void>;
     createPost(text: string, mediaHash: ExternalBlob | null, mediaType: string | null, isArtistPost: boolean): Promise<PostResponse>;
     createReply(parentPostId: bigint, text: string, mediaHash: ExternalBlob | null, mediaType: string | null): Promise<PostResponse>;
     deletePost(postId: bigint): Promise<void>;
