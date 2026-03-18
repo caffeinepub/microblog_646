@@ -1,25 +1,24 @@
 # BandSpace
 
 ## Current State
-The backend has stable variables for UserProfile, ArtistPage, Post, and Notification. There are no preupgrade/postupgrade hooks. All record fields in stored types are required (non-optional), which causes deserialization failures on every canister upgrade that adds new fields.
+The backend `main.mo` was truncated and missing all post, follow, notification, search, and moderation methods. Critically, no data variables were declared as `stable`, causing data wipe on every deployment.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `preupgrade` system function to snapshot stable data before upgrade
-- `postupgrade` system function to migrate/backfill data after upgrade
-- Version tracking variable to support future migrations
+- Complete rewrite of `main.mo` with ALL methods restored
+- `stable` keyword on all persistent data vars
+- `preupgrade`/`postupgrade` system hooks
+- Safe `normalizeWebsite` helper (no pipe operator)
 
 ### Modify
-- All stored record types (`UserProfile`, `ArtistPage`, `Post`, `Notification`) to use a safe upgrade-compatible pattern
-- Stable variable declarations to use upgrade-safe serialization approach
+- All `var` declarations changed to `stable var`
 
 ### Remove
-- Nothing removed
+- Truncated/incomplete backend code
+- Pipe operator syntax that caused compile failures
 
 ## Implementation Plan
-1. Add a stable `version` Nat variable for future migration versioning
-2. Add `preupgrade` and `postupgrade` system functions
-3. In `postupgrade`, iterate over stored records and backfill any missing optional fields with defaults
-4. Ensure all currently required fields that were added in recent deployments (`ArtistPage.username`, `Post.authorIdentity`) are handled safely in migration
-5. Document the pattern so all future field additions follow the optional-field rule
+1. Write complete `main.mo` with stable vars, upgrade hooks, and all methods
+2. Fix any syntax issues (normalizeWebsite, unused variables)
+3. Deploy

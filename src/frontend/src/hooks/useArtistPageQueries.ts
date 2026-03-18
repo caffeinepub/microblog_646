@@ -6,10 +6,26 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { ExternalBlob } from "../backend";
+import type { FullBackendInterface } from "../types/extendedBackend";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const DEFAULT_PAGE_SIZE = 20n;
+
+/** Cast actor to the full interface (includes social methods beyond the generated d.ts) */
+function fullActor(
+  actor: ReturnType<typeof useActor>["actor"],
+): FullBackendInterface {
+  return actor as unknown as FullBackendInterface;
+}
+
+/** Normalize a website URL: add https:// if no protocol is present */
+function normalizeWebsite(website: string | null): string | null {
+  if (!website || !website.trim()) return null;
+  const trimmed = website.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
 
 export function useArtistPage() {
   const { actor, isFetching } = useActor();
@@ -66,14 +82,20 @@ export function useCreateOrUpdateArtistPage() {
       genre,
       bio,
       musicLinks,
+      location,
+      website,
     }: {
       username: string;
       bandName: string;
       genre: string;
       bio: string;
       musicLinks: string[];
+      location?: string | null;
+      website?: string | null;
     }) => {
       if (!actor) throw new Error("Actor not ready");
+      // Normalize website: add https:// if no protocol present
+      const normalizedWebsite = normalizeWebsite(website ?? null);
       await actor.createOrUpdateArtistPage(
         username,
         bandName,
@@ -81,6 +103,8 @@ export function useCreateOrUpdateArtistPage() {
         bio,
         musicLinks,
         null,
+        location ?? null,
+        normalizedWebsite,
       );
     },
     onSuccess: () => {
@@ -100,7 +124,11 @@ export function useArtistFeed(principal: Principal | null) {
     queryKey: ["artistFeed", principal?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || !principal) throw new Error("Actor not ready");
-      return actor.getArtistFeed(principal, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getArtistFeed(
+        principal,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -116,7 +144,7 @@ export function useArtistHomeFeed() {
     queryKey: ["artistHomeFeed"],
     queryFn: async ({ pageParam }) => {
       if (!actor || !identity) throw new Error("Actor not ready");
-      return actor.getArtistFeed(
+      return fullActor(actor).getArtistFeed(
         identity.getPrincipal(),
         pageParam,
         DEFAULT_PAGE_SIZE,
@@ -136,7 +164,11 @@ export function useArtistFollowers(principal: Principal | null) {
     queryKey: ["artistFollowers", principal?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || !principal) throw new Error("Actor not ready");
-      return actor.getArtistFollowers(principal, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getArtistFollowers(
+        principal,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: 0n,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
@@ -151,7 +183,11 @@ export function useArtistFollowing(principal: Principal | null) {
     queryKey: ["artistFollowing", principal?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || !principal) throw new Error("Actor not ready");
-      return actor.getArtistFollowing(principal, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getArtistFollowing(
+        principal,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: 0n,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
@@ -166,7 +202,7 @@ export function useFollowArtist() {
   return useMutation({
     mutationFn: async (artistPrincipal: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.followArtist(artistPrincipal);
+      await fullActor(actor).followArtist(artistPrincipal);
     },
     onSettled: (_data, _err, artistPrincipal) => {
       queryClient.invalidateQueries({
@@ -184,7 +220,7 @@ export function useUnfollowArtist() {
   return useMutation({
     mutationFn: async (artistPrincipal: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.unfollowArtist(artistPrincipal);
+      await fullActor(actor).unfollowArtist(artistPrincipal);
     },
     onSettled: (_data, _err, artistPrincipal) => {
       queryClient.invalidateQueries({

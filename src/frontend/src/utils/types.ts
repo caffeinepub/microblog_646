@@ -50,6 +50,8 @@ export interface UserProfileResponse {
   username: string;
   displayName: string;
   bio: string;
+  location?: string;
+  website?: string;
   profilePictureHash?: ExternalBlob;
   headerImageHash?: ExternalBlob;
   createdAt: bigint;

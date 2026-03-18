@@ -1,17 +1,17 @@
 import List "mo:core/List";
 import Map "mo:core/Map";
-import Runtime "mo:core/Runtime";
-import Time "mo:core/Time";
-
+import Iter "mo:core/Iter";
 import Char "mo:core/Char";
+import Runtime "mo:core/Runtime";
 import Int "mo:core/Int";
+import Time "mo:core/Time";
 import Storage "blob-storage/Storage";
 import MixinStorage "blob-storage/Mixin";
-import Iter "mo:core/Iter";
-
 
 actor {
   include MixinStorage();
+
+  // ── Types ─────────────────────────────────────────────────────────────────
 
   type UserProfile = {
     username : Text;
@@ -19,6 +19,8 @@ actor {
     bio : Text;
     profilePictureHash : ?Storage.ExternalBlob;
     headerImageHash : ?Storage.ExternalBlob;
+    location : ?Text;
+    website : ?Text;
     createdAt : Time.Time;
     updatedAt : Time.Time;
   };
@@ -32,6 +34,8 @@ actor {
     tier : Text;
     profilePictureHash : ?Storage.ExternalBlob;
     headerImageHash : ?Storage.ExternalBlob;
+    location : ?Text;
+    website : ?Text;
     createdAt : Time.Time;
     updatedAt : Time.Time;
   };
@@ -46,6 +50,8 @@ actor {
     tier : Text;
     profilePictureHash : ?Storage.ExternalBlob;
     headerImageHash : ?Storage.ExternalBlob;
+    location : ?Text;
+    website : ?Text;
     followerCount : Nat;
     followingCount : Nat;
     postCount : Nat;
@@ -116,6 +122,8 @@ actor {
     bio : Text;
     profilePictureHash : ?Storage.ExternalBlob;
     headerImageHash : ?Storage.ExternalBlob;
+    location : ?Text;
+    website : ?Text;
     createdAt : Time.Time;
     updatedAt : Time.Time;
     followersCount : Nat;
@@ -163,6 +171,8 @@ actor {
     hasMore : Bool;
   };
 
+  // ── Stable State ──────────────────────────────────────────────────────────
+
   stable var userProfiles : Map.Map<Principal, UserProfile> = Map.empty();
   stable var artistPages : Map.Map<Principal, ArtistPage> = Map.empty();
   stable var usernameToUser : Map.Map<Text, Principal> = Map.empty();
@@ -186,51 +196,31 @@ actor {
   stable var nextNotificationId : Nat = 0;
   stable var schemaVersion : Nat = 1;
 
+  // ── Constants ─────────────────────────────────────────────────────────────
+
   let maxPostLength : Nat = 280;
   let editDeleteWindowNanos : Int = 900_000_000_000;
   let maxPostsPerUser : Nat = 10_000;
-  let maxPostsPerArtist : Nat = 10_000;
   let maxNotificationsPerUser : Nat = 50;
-  let maxFollowersPerArtist : Nat = 100_000;
+  stable var maxPostsPerArtist : Nat = 10_000;
+  stable var maxFollowersPerArtist : Nat = 100_000;
 
-  func validateMedia(mediaHash : ?Storage.ExternalBlob, mediaType : ?Text) {
-    switch (mediaHash, mediaType) {
-      case (null, null) {};
-      case (?_, ?"image") {};
-      case (?_, ?"video") {};
-      case (null, ?_) { Runtime.trap("mediaType requires mediaHash") };
-      case (?_, null) { Runtime.trap("mediaHash requires mediaType") };
-      case (?_, ?_) { Runtime.trap("mediaType must be \"image\" or \"video\"") };
-    };
-  };
+  // ── Upgrade Hooks ─────────────────────────────────────────────────────────
 
-  func requirePostCapNotReached(caller : Principal) {
-    let count = switch (userPostCounts.get(caller)) {
-      case (?n) { n };
-      case (null) { 0 };
-    };
-    if (count >= maxPostsPerUser) {
-      Runtime.trap("Post limit reached (" # maxPostsPerUser.toText() # " posts max)");
-    };
-  };
+  system func preupgrade() {};
+  system func postupgrade() { schemaVersion += 1 };
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   func requireAuth(caller : Principal) {
-    if (caller.isAnonymous()) {
-      Runtime.trap("Not authenticated");
-    };
+    if (caller.isAnonymous()) { Runtime.trap("Not authenticated") };
   };
 
   func toLower(t : Text) : Text {
-    t.map(
-      func(c) {
-        let code = c.toNat32();
-        if (code >= 65 and code <= 90) {
-          Char.fromNat32(code + 32);
-        } else {
-          c;
-        };
-      }
-    );
+    t.map(func(c) {
+      let code = c.toNat32();
+      if (code >= 65 and code <= 90) { Char.fromNat32(code + 32) } else { c };
+    });
   };
 
   func isValidUsername(username : Text) : Bool {
@@ -238,24 +228,32 @@ actor {
     if (size < 3 or size > 20) { return false };
     for (c in username.chars()) {
       let code = c.toNat32();
-      let isLower = code >= 97 and code <= 122;
-      let isUpper = code >= 65 and code <= 90;
-      let isDigit = code >= 48 and code <= 57;
-      let isUnderscore = code == 95;
-      if (not isLower and not isUpper and not isDigit and not isUnderscore) {
-        return false;
-      };
+      if (not ((code >= 97 and code <= 122) or (code >= 65 and code <= 90) or
+               (code >= 48 and code <= 57) or code == 95)) { return false };
     };
     true;
   };
 
-  func getMap<V>(store : Map.Map<Principal, Map.Map<Nat, V>>, user : Principal) : Map.Map<Nat, V> {
-    switch (store.get(user)) {
-      case (?m) { m };
-      case (null) {
-        let m = Map.empty<Nat, V>();
-        store.add(user, m);
-        m;
+  func normalizeWebsite(url : ?Text) : ?Text {
+    switch (url) {
+      case (null) { null };
+      case (?u) {
+        if (u == "") { null } else {
+          let lower = toLower(u);
+          let prefix8 = do {
+            var s = ""; var i = 0;
+            for (c in lower.chars()) { if (i < 8) { s #= c.toText(); i += 1 } };
+            s
+          };
+          let prefix7 = do {
+            var s = ""; var i = 0;
+            for (c in lower.chars()) { if (i < 7) { s #= c.toText(); i += 1 } };
+            s
+          };
+          if (prefix8 == "https://") { ?u }
+          else if (prefix7 == "http://") { ?u }
+          else { ?("https://" # u) };
+        };
       };
     };
   };
@@ -263,194 +261,35 @@ actor {
   func getPrincipalMap(store : Map.Map<Principal, Map.Map<Principal, Bool>>, key : Principal) : Map.Map<Principal, Bool> {
     switch (store.get(key)) {
       case (?m) { m };
-      case (null) {
-        let m = Map.empty<Principal, Bool>();
-        store.add(key, m);
-        m;
-      };
-    };
-  };
-
-  func incrementPostCount(user : Principal, identity : AuthorIdentity) {
-    switch (identity) {
-      case (#fan) {
-        let current = switch (userPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        userPostCounts.add(user, current + 1);
-      };
-      case (#artist) {
-        let current = switch (artistPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        artistPostCounts.add(user, current + 1);
-      };
-    };
-  };
-
-  func decrementPostCount(user : Principal, identity : AuthorIdentity) {
-    switch (identity) {
-      case (#fan) {
-        let current : Int = switch (userPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        if (current > 0) {
-          userPostCounts.add(user, Int.abs(current - 1));
-        };
-      };
-      case (#artist) {
-        let current : Int = switch (artistPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        if (current > 0) {
-          artistPostCounts.add(user, Int.abs(current - 1));
-        };
-      };
+      case (null) { let m = Map.empty<Principal, Bool>(); store.add(key, m); m };
     };
   };
 
   func getNatPrincipalMap(store : Map.Map<Nat, Map.Map<Principal, Bool>>, key : Nat) : Map.Map<Principal, Bool> {
     switch (store.get(key)) {
       case (?m) { m };
-      case (null) {
-        let m = Map.empty<Principal, Bool>();
-        store.add(key, m);
-        m;
-      };
+      case (null) { let m = Map.empty<Principal, Bool>(); store.add(key, m); m };
     };
   };
 
-  func getPostReplies(postId : Nat) : Map.Map<Nat, Bool> {
+  func getPostRepliesMap(postId : Nat) : Map.Map<Nat, Bool> {
     switch (postReplies.get(postId)) {
       case (?m) { m };
-      case (null) {
-        let m = Map.empty<Nat, Bool>();
-        postReplies.add(postId, m);
-        m;
-      };
+      case (null) { let m = Map.empty<Nat, Bool>(); postReplies.add(postId, m); m };
     };
   };
 
   func getHashtagPosts(tag : Text) : Map.Map<Nat, Bool> {
     switch (hashtagIndex.get(tag)) {
       case (?m) { m };
-      case (null) {
-        let m = Map.empty<Nat, Bool>();
-        hashtagIndex.add(tag, m);
-        m;
-      };
+      case (null) { let m = Map.empty<Nat, Bool>(); hashtagIndex.add(tag, m); m };
     };
   };
 
-  func isTokenChar(c : Char) : Bool {
-    let code = c.toNat32();
-    (code >= 97 and code <= 122) or (code >= 65 and code <= 90) or (code >= 48 and code <= 57) or code == 95;
-  };
-
-  func extractTokens(text : Text, triggerChar : Char) : [Text] {
-    let tokens = List.empty<Text>();
-    let seen = Map.empty<Text, Bool>();
-    var current = "";
-    var inToken = false;
-
-    for (c in text.chars()) {
-      if (inToken) {
-        if (isTokenChar(c)) {
-          current #= c.toText();
-        } else {
-          if (current != "" and tokens.size() < 10) {
-            let lower = toLower(current);
-            if (seen.get(lower) == null) {
-              tokens.add(lower);
-              seen.add(lower, true);
-            };
-          };
-          current := "";
-          inToken := false;
-          if (c == triggerChar) { inToken := true };
-        };
-      } else if (c == triggerChar) {
-        inToken := true;
-      };
-    };
-    if (inToken and current != "" and tokens.size() < 10) {
-      let lower = toLower(current);
-      if (seen.get(lower) == null) {
-        tokens.add(lower);
-        seen.add(lower, true);
-      };
-    };
-    tokens.toArray();
-  };
-
-  func indexPostHashtags(postId : Nat, text : Text) {
-    for (tag in extractTokens(text, '#').vals()) {
-      getHashtagPosts(tag).add(postId, true);
-    };
-  };
-
-  func removePostHashtags(postId : Nat, text : Text) {
-    for (tag in extractTokens(text, '#').vals()) {
-      switch (hashtagIndex.get(tag)) {
-        case (?m) { m.remove(postId) };
-        case (null) {};
-      };
-    };
-  };
-
-  func addNotification(recipient : Principal, actor_ : Principal, notificationType : NotificationType) {
-    if (recipient == actor_) { return };
-    if (isBlockedBidirectional(recipient, actor_)) { return };
-    let actorUsername = switch (userProfiles.get(actor_)) {
-      case (?p) { p.username };
-      case (null) { "unknown" };
-    };
-    let id = nextNotificationId;
-    nextNotificationId += 1;
-    let notif : Notification = {
-      id;
-      notificationType;
-      actorPrincipal = actor_;
-      actorUsername;
-      createdAt = Time.now();
-      isRead = false;
-    };
-    let notifs = getMap(userNotifications, recipient);
-    notifs.add(id, notif);
-
-    if (notifs.size() > maxNotificationsPerUser) {
-      let ids = List.empty<Nat>();
-      for ((nid, _) in notifs.entries()) {
-        ids.add(nid);
-      };
-      ids.sortInPlace(
-        func(a, b) {
-          if (a < b) { #less } else if (a > b) { #greater } else { #equal };
-        }
-      );
-      var removed : Nat = 0;
-      let toRemove : Nat = notifs.size() - maxNotificationsPerUser;
-      for (nid in ids.values()) {
-        if (removed < toRemove) {
-          notifs.remove(nid);
-          removed += 1;
-        };
-      };
-    };
-  };
-
-  func notifyMentions(text : Text, postId : Nat, actor_ : Principal) {
-    for (username in extractTokens(text, '@').vals()) {
-      switch (usernameToUser.get(username)) {
-        case (?recipient) {
-          addNotification(recipient, actor_, #mention(postId));
-        };
-        case (null) {};
-      };
+  func getNotifMap(user : Principal) : Map.Map<Nat, Notification> {
+    switch (userNotifications.get(user)) {
+      case (?m) { m };
+      case (null) { let m = Map.empty<Nat, Notification>(); userNotifications.add(user, m); m };
     };
   };
 
@@ -465,434 +304,204 @@ actor {
     hasBlocked(a, b) or hasBlocked(b, a);
   };
 
-  func textContains(haystack : Text, needle : Text) : Bool {
-    let h = toLower(haystack);
-    let n = toLower(needle);
-    let nSize = n.size();
-    if (nSize == 0) { return true };
-    let hSize = h.size();
-    if (nSize > hSize) { return false };
-
-    let hChars = List.empty<Char>();
-    for (c in h.chars()) { hChars.add(c) };
-    let nChars = List.empty<Char>();
-    for (c in nChars.values()) { };
-    let hArr = hChars.toArray();
-    let nArr = nChars.toArray();
-
-    var i = 0;
-    while (i + nSize <= hSize) {
-      var j = 0;
-      var matched = true;
-      while (j < nSize and matched) {
-        if (hArr[i + j] != nArr[j]) { matched := false };
-        j += 1;
-      };
-      if (matched) { return true };
-      i += 1;
-    };
-    false;
+  func isTokenChar(c : Char) : Bool {
+    let code = c.toNat32();
+    (code >= 97 and code <= 122) or (code >= 65 and code <= 90) or
+    (code >= 48 and code <= 57) or code == 95;
   };
 
-  func buildProfileResponse(user : Principal, caller : Principal) : ?UserProfileResponse {
-    if (not caller.isAnonymous() and hasBlocked(user, caller)) {
-      return null;
+  func extractTokens(text : Text, triggerChar : Char) : [Text] {
+    let tokens = List.empty<Text>();
+    let seen = Map.empty<Text, Bool>();
+    var current = "";
+    var inToken = false;
+    for (c in text.chars()) {
+      if (inToken) {
+        if (isTokenChar(c)) { current #= c.toText() }
+        else {
+          if (current != "" and tokens.size() < 10) {
+            let lower = toLower(current);
+            if (seen.get(lower) == null) { tokens.add(lower); seen.add(lower, true) };
+          };
+          current := ""; inToken := false;
+          if (c == triggerChar) { inToken := true };
+        };
+      } else if (c == triggerChar) { inToken := true };
     };
-    switch (userProfiles.get(user)) {
-      case (null) { null };
-      case (?profile) {
-        let followersCount = switch (followers.get(user)) {
-          case (?m) { m.size() };
-          case (null) { 0 };
-        };
-        let followingCount = switch (following.get(user)) {
-          case (?m) { m.size() };
-          case (null) { 0 };
-        };
-        let postsCount = switch (userPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        let isAuthenticated = not caller.isAnonymous();
-        let isFollowed = if (isAuthenticated) {
-          switch (following.get(caller)) {
-            case (?m) { m.get(user) != null };
-            case (null) { false };
-          };
-        } else { false };
-        let isBlocked = if (isAuthenticated) {
-          hasBlocked(caller, user);
-        } else { false };
-        let isMuted = if (isAuthenticated) {
-          switch (mutes.get(caller)) {
-            case (?m) { m.get(user) != null };
-            case (null) { false };
-          };
-        } else { false };
-        ?{
-          principal = user;
-          username = profile.username;
-          displayName = profile.displayName;
-          bio = profile.bio;
-          profilePictureHash = profile.profilePictureHash;
-          headerImageHash = profile.headerImageHash;
-          createdAt = profile.createdAt;
-          updatedAt = profile.updatedAt;
-          followersCount;
-          followingCount;
-          postsCount;
-          isFollowedByCurrentUser = isFollowed;
-          isBlockedByCurrentUser = isBlocked;
-          isMutedByCurrentUser = isMuted;
-        };
+    if (inToken and current != "" and tokens.size() < 10) {
+      let lower = toLower(current);
+      if (seen.get(lower) == null) { tokens.add(lower); seen.add(lower, true) };
+    };
+    tokens.toArray();
+  };
+
+  func indexPostHashtags(postId : Nat, text : Text) {
+    for (tag in extractTokens(text, '#').vals()) { getHashtagPosts(tag).add(postId, true) };
+  };
+
+  func removePostHashtags(postId : Nat, text : Text) {
+    for (tag in extractTokens(text, '#').vals()) {
+      switch (hashtagIndex.get(tag)) { case (?m) { m.remove(postId) }; case (null) {} };
+    };
+  };
+
+  func addNotification(recipient : Principal, actor_ : Principal, notificationType : NotificationType) {
+    if (recipient == actor_) { return };
+    if (isBlockedBidirectional(recipient, actor_)) { return };
+    let actorUsername = switch (userProfiles.get(actor_)) {
+      case (?p) { p.username }; case (null) { "unknown" };
+    };
+    let id = nextNotificationId;
+    nextNotificationId += 1;
+    let notif : Notification = { id; notificationType; actorPrincipal = actor_; actorUsername; createdAt = Time.now(); isRead = false };
+    let notifs = getNotifMap(recipient);
+    notifs.add(id, notif);
+    if (notifs.size() > maxNotificationsPerUser) {
+      let ids = List.empty<Nat>();
+      for ((nid, _) in notifs.entries()) { ids.add(nid) };
+      ids.sortInPlace(func(a, b) { if (a < b) { #less } else if (a > b) { #greater } else { #equal } });
+      var removed : Nat = 0;
+      let toRemove : Nat = notifs.size() - maxNotificationsPerUser;
+      for (nid in ids.values()) {
+        if (removed < toRemove) { notifs.remove(nid); removed += 1 };
+      };
+    };
+  };
+
+  func notifyMentions(text : Text, postId : Nat, actor_ : Principal) {
+    for (username in extractTokens(text, '@').vals()) {
+      switch (usernameToUser.get(username)) {
+        case (?recipient) { addNotification(recipient, actor_, #mention(postId)) };
+        case (null) {};
       };
     };
   };
 
   func toPostResponse(post : Post, caller : ?Principal) : PostResponse {
-    let authorIdentity = post.authorIdentity;
-    let authorUsername : Text = switch (authorIdentity) {
-      case (#fan) {
-        switch (userProfiles.get(post.author)) {
-          case (?p) { p.username };
-          case (null) { "" };
-        };
-      };
-      case (#artist) {
-        switch (artistPages.get(post.author)) {
-          case (?a) { a.username };
-          case (null) { "" };
-        };
-      };
+    let authorUsername : Text = switch (post.authorIdentity) {
+      case (#fan) { switch (userProfiles.get(post.author)) { case (?p) { p.username }; case (null) { "" } } };
+      case (#artist) { switch (artistPages.get(post.author)) { case (?a) { a.username }; case (null) { "" } } };
     };
-    let authorDisplayName : Text = switch (authorIdentity) {
-      case (#fan) {
-        switch (userProfiles.get(post.author)) {
-          case (?p) { p.displayName };
-          case (null) { "" };
-        };
-      };
-      case (#artist) {
-        switch (artistPages.get(post.author)) {
-          case (?a) { a.bandName };
-          case (null) { "" };
-        };
-      };
+    let authorDisplayName : Text = switch (post.authorIdentity) {
+      case (#fan) { switch (userProfiles.get(post.author)) { case (?p) { p.displayName }; case (null) { "" } } };
+      case (#artist) { switch (artistPages.get(post.author)) { case (?a) { a.bandName }; case (null) { "" } } };
     };
-    let authorProfilePictureHash = switch (authorIdentity) {
-      case (#fan) {
-        switch (userProfiles.get(post.author)) {
-          case (?p) { p.profilePictureHash };
-          case (null) { null };
-        };
-      };
-      case (#artist) {
-        switch (artistPages.get(post.author)) {
-          case (?a) { a.profilePictureHash };
-          case (null) { null };
-        };
-      };
+    let authorProfilePictureHash = switch (post.authorIdentity) {
+      case (#fan) { switch (userProfiles.get(post.author)) { case (?p) { p.profilePictureHash }; case (null) { null } } };
+      case (#artist) { switch (artistPages.get(post.author)) { case (?a) { a.profilePictureHash }; case (null) { null } } };
     };
     let likes = postLikes.get(post.id);
-    let likeCount = switch (likes) {
-      case (?m) { m.size() };
-      case (null) { 0 };
-    };
+    let likeCount = switch (likes) { case (?m) { m.size() }; case (null) { 0 } };
     let isLiked = switch (caller) {
-      case (?c) {
-        switch (likes) {
-          case (?m) { m.get(c) != null };
-          case (null) { false };
-        };
-      };
+      case (?c) { switch (likes) { case (?m) { m.get(c) != null }; case (null) { false } } };
       case (null) { false };
     };
-    let replyCount = switch (postReplies.get(post.id)) {
-      case (?m) { m.size() };
-      case (null) { 0 };
-    };
+    let replyCount = switch (postReplies.get(post.id)) { case (?m) { m.size() }; case (null) { 0 } };
     let reposts = postReposts.get(post.id);
-    let repostCount = switch (reposts) {
-      case (?m) { m.size() };
-      case (null) { 0 };
-    };
+    let repostCount = switch (reposts) { case (?m) { m.size() }; case (null) { 0 } };
     let isReposted = switch (caller) {
-      case (?c) {
-        switch (reposts) {
-          case (?m) { m.get(c) != null };
-          case (null) { false };
-        };
-      };
+      case (?c) { switch (reposts) { case (?m) { m.get(c) != null }; case (null) { false } } };
       case (null) { false };
     };
-    {
-      id = post.id;
-      author = post.author;
-      authorIdentity;
-      authorUsername;
-      authorDisplayName;
-      authorProfilePictureHash;
-      text = post.text;
-      mediaHash = post.mediaHash;
-      mediaType = post.mediaType;
-      postType = post.postType;
-      createdAt = post.createdAt;
-      editedAt = post.editedAt;
-      likeCount;
-      replyCount;
-      repostCount;
-      isLikedByCurrentUser = isLiked;
-      isRepostedByCurrentUser = isReposted;
-    };
+    { id = post.id; author = post.author; authorIdentity = post.authorIdentity;
+      authorUsername; authorDisplayName; authorProfilePictureHash;
+      text = post.text; mediaHash = post.mediaHash; mediaType = post.mediaType;
+      postType = post.postType; createdAt = post.createdAt; editedAt = post.editedAt;
+      likeCount; replyCount; repostCount; isLikedByCurrentUser = isLiked; isRepostedByCurrentUser = isReposted };
   };
 
-  func paginatePosts(start : Nat, effectiveLimit : Nat, caller : ?Principal, predicate : (Post) -> Bool) : PaginatedPosts {
-    if (start == 0) {
-      return { posts = []; nextCursor = null; hasMore = false };
-    };
+  func paginatePosts(cursor : ?Nat, limit : Nat, callerOpt : ?Principal, predicate : (Post) -> Bool) : PaginatedPosts {
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let startId = switch (cursor) { case (?c) { c }; case (null) { nextPostId } };
+    if (startId == 0) { return { posts = []; nextCursor = null; hasMore = false } };
     let buf = List.empty<PostResponse>();
-    let startInt : Int = start;
-    for ((_, post) in posts.reverseEntriesFrom(Int.abs(startInt - 1))) {
-      if (predicate(post)) {
-        if (buf.size() < effectiveLimit) {
-          buf.add(toPostResponse(post, caller));
-        } else {
-          let arr = buf.toArray();
-          return {
-            posts = arr;
-            nextCursor = ?arr[arr.size() - 1].id;
-            hasMore = true;
-          };
-        };
-      };
-    };
-    { posts = buf.toArray(); nextCursor = null; hasMore = false };
-  };
-
-  func paginateFollows(principalMap : Map.Map<Principal, Bool>, caller : Principal, offset : Nat, effectiveLimit : Nat) : PaginatedFollows {
-    let result = List.empty<FollowUserResponse>();
-    var skipped : Nat = 0;
-    var collected : Nat = 0;
-    var hasMore = false;
-    for ((p, _) in principalMap.entries()) {
-      if (not caller.isAnonymous() and isBlockedBidirectional(caller, p)) {
-        // skip
-      } else {
-        switch (userProfiles.get(p)) {
-          case (null) {};
-          case (?profile) {
-            if (skipped < offset) {
-              skipped += 1;
-            } else if (collected < effectiveLimit) {
-              result.add({
-                principal = p;
-                username = profile.username;
-                displayName = profile.displayName;
-                profilePictureHash = profile.profilePictureHash;
-              });
-              collected += 1;
-            } else {
-              hasMore := true;
-            };
-          };
-        };
-      };
-    };
-    let nextOffset : ?Nat = if (hasMore) { ?(offset + effectiveLimit) } else {
-      null;
-    };
-    { users = result.toArray(); nextOffset; hasMore };
-  };
-
-  func paginatePostIds(idMap : Map.Map<Nat, Bool>, caller : Principal, cursor : ?Nat, effectiveLimit : Nat) : PaginatedPosts {
-    let isAnon = caller.isAnonymous();
-    let c = if (isAnon) { null } else { ?caller };
-    let idList = List.empty<Nat>();
-    for ((id, _) in idMap.entries()) {
-      idList.add(id);
-    };
-    idList.sortInPlace(
-      func(a, b) {
-        if (a > b) { #less } else if (a < b) { #greater } else { #equal };
-      }
-    );
-    let start = switch (cursor) {
-      case (?cur) { cur };
-      case (null) { nextPostId };
-    };
-    let resultBuf = List.empty<PostResponse>();
     var foundExtra = false;
-    for (id in idList.values()) {
-      if (not foundExtra and id < start) {
-        switch (posts.get(id)) {
-          case (?post) {
-            if (not isAnon and isBlockedBidirectional(caller, post.author)) {
-              // skip
-            } else if (resultBuf.size() < effectiveLimit) {
-              resultBuf.add(toPostResponse(post, c));
-            } else {
-              foundExtra := true;
-            };
+    var i : Nat = startId;
+    while (i > 0 and not foundExtra) {
+      i -= 1;
+      switch (posts.get(i)) {
+        case (?post) {
+          if (predicate(post)) {
+            if (buf.size() < effectiveLimit) { buf.add(toPostResponse(post, callerOpt)) }
+            else { foundExtra := true };
           };
-          case (null) {};
         };
+        case (null) {};
       };
     };
-    let arr = resultBuf.toArray();
-    let nextCursor : ?Nat = if (foundExtra and arr.size() > 0) {
-      ?arr[arr.size() - 1].id;
-    } else {
-      null;
-    };
+    let arr = buf.toArray();
+    let nextCursor : ?Nat = if (foundExtra and arr.size() > 0) { ?arr[arr.size() - 1].id } else { null };
     { posts = arr; nextCursor; hasMore = foundExtra };
   };
 
-  func markNotifRead(notifs : Map.Map<Nat, Notification>, id : Nat) {
-    switch (notifs.get(id)) {
-      case (?notif) {
-        if (not notif.isRead) {
-          notifs.add(
-            id,
-            {
-              id = notif.id;
-              notificationType = notif.notificationType;
-              actorPrincipal = notif.actorPrincipal;
-              actorUsername = notif.actorUsername;
-              createdAt = notif.createdAt;
-              isRead = true;
-            },
-          );
-        };
-      };
-      case (null) {};
-    };
-  };
-
-  // ── Artist Page ──────────────────────────────────────────────────────────────
-
-  func validateArtistPageFields(username : Text, bandName : Text, genre : Text, bio : Text, musicLinks : [Text]) {
-    if (username == "") {
-      Runtime.trap("Username cannot be empty");
-    };
-    if (not isValidUsername(username)) {
-      Runtime.trap("Username must be 3-20 characters, alphanumeric and underscores only");
-    };
-    if (bandName.size() < 1 or bandName.size() > 100) {
-      Runtime.trap("Band name must be 1-100 characters");
-    };
-    if (genre.size() < 1 or genre.size() > 50) {
-      Runtime.trap("Genre must be 1-50 characters");
-    };
-    if (bio.size() > 500) {
-      Runtime.trap("Bio must be 500 characters or fewer");
-    };
-    if (musicLinks.size() > 5) {
-      Runtime.trap("Maximum 5 music links allowed");
-    };
-    for (link in musicLinks.values()) {
-      if (link.size() > 200) {
-        Runtime.trap("Each music link must be 200 characters or fewer");
+  func buildProfileResponse(user : Principal, caller : Principal) : ?UserProfileResponse {
+    if (not caller.isAnonymous() and hasBlocked(user, caller)) { return null };
+    switch (userProfiles.get(user)) {
+      case (null) { null };
+      case (?profile) {
+        let followersCount = switch (followers.get(user)) { case (?m) { m.size() }; case (null) { 0 } };
+        let followingCount = switch (following.get(user)) { case (?m) { m.size() }; case (null) { 0 } };
+        let postsCount = switch (userPostCounts.get(user)) { case (?n) { n }; case (null) { 0 } };
+        let isAuth = not caller.isAnonymous();
+        let isFollowed = if (isAuth) { switch (following.get(caller)) { case (?m) { m.get(user) != null }; case (null) { false } } } else { false };
+        let isBlocked = if (isAuth) { hasBlocked(caller, user) } else { false };
+        let isMuted = if (isAuth) { switch (mutes.get(caller)) { case (?m) { m.get(user) != null }; case (null) { false } } } else { false };
+        ?{ principal = user; username = profile.username; displayName = profile.displayName;
+           bio = profile.bio; profilePictureHash = profile.profilePictureHash;
+           headerImageHash = profile.headerImageHash; location = profile.location;
+           website = profile.website; createdAt = profile.createdAt; updatedAt = profile.updatedAt;
+           followersCount; followingCount; postsCount;
+           isFollowedByCurrentUser = isFollowed; isBlockedByCurrentUser = isBlocked; isMutedByCurrentUser = isMuted };
       };
     };
   };
 
   func toArtistPageResponse(artist : Principal, page : ArtistPage, caller : Principal) : ArtistPageResponse {
-    let followersCount = switch (artistFollowers.get(artist)) {
-      case (?m) { m.size() };
-      case (null) { 0 };
-    };
-    let followingCount = switch (artistFollowing.get(artist)) {
-      case (?m) { m.size() };
-      case (null) { 0 };
-    };
-    let postsCount = switch (artistPostCounts.get(artist)) {
-      case (?n) { n };
-      case (null) { 0 };
-    };
-    let isAuthenticated = not caller.isAnonymous();
-    let isFollowed = if (isAuthenticated) {
-      switch (artistFollowers.get(artist)) {
-        case (?m) { m.get(caller) != null };
-        case (null) { false };
-      };
+    let followerCount = switch (artistFollowers.get(artist)) { case (?m) { m.size() }; case (null) { 0 } };
+    let followingCount = switch (artistFollowing.get(artist)) { case (?m) { m.size() }; case (null) { 0 } };
+    let postCount = switch (artistPostCounts.get(artist)) { case (?n) { n }; case (null) { 0 } };
+    let isFollowed = if (not caller.isAnonymous()) {
+      switch (artistFollowers.get(artist)) { case (?m) { m.get(caller) != null }; case (null) { false } }
     } else { false };
-    {
-      principal = artist;
-      username = page.username;
-      bandName = page.bandName;
-      genre = page.genre;
-      bio = page.bio;
-      musicLinks = page.musicLinks;
-      tier = page.tier;
-      profilePictureHash = page.profilePictureHash;
-      headerImageHash = page.headerImageHash;
-      followerCount = followersCount;
-      followingCount = followingCount;
-      postCount = postsCount;
-      createdAt = page.createdAt;
-      updatedAt = page.updatedAt;
-      isFollowedByCurrentUser = isFollowed;
-    };
+    { principal = artist; username = page.username; bandName = page.bandName; genre = page.genre;
+      bio = page.bio; musicLinks = page.musicLinks; tier = page.tier;
+      profilePictureHash = page.profilePictureHash; headerImageHash = page.headerImageHash;
+      location = page.location; website = page.website;
+      followerCount; followingCount; postCount;
+      createdAt = page.createdAt; updatedAt = page.updatedAt; isFollowedByCurrentUser = isFollowed };
   };
 
-  public shared ({ caller }) func createOrUpdateArtistPage(username : Text, bandName : Text, genre : Text, bio : Text, musicLinks : [Text], tier : ?Text) : async () {
+  // ── Artist Pages ──────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func createOrUpdateArtistPage(
+    username : Text, bandName : Text, genre : Text, bio : Text,
+    musicLinks : [Text], tier : ?Text, location : ?Text, website : ?Text
+  ) : async () {
     requireAuth(caller);
-    validateArtistPageFields(username, bandName, genre, bio, musicLinks);
-
+    if (not isValidUsername(username)) { Runtime.trap("Username must be 3-20 chars, alphanumeric + underscores") };
+    if (bandName.size() < 1 or bandName.size() > 100) { Runtime.trap("Band name must be 1-100 characters") };
+    if (genre.size() < 1 or genre.size() > 50) { Runtime.trap("Genre must be 1-50 characters") };
+    if (bio.size() > 500) { Runtime.trap("Bio max 500 characters") };
+    if (musicLinks.size() > 5) { Runtime.trap("Max 5 music links") };
     let lower = toLower(username);
-
-    switch (usernameToUser.get(lower)) {
-      case (?_) { Runtime.trap("Username is already taken") };
-      case (null) {};
-    };
+    switch (usernameToUser.get(lower)) { case (?_) { Runtime.trap("Username already taken") }; case (null) {} };
     switch (artistUsernameToArtist.get(lower)) {
-      case (?existingArtist) {
-        if (existingArtist != caller) {
-          Runtime.trap("Username is already taken");
-        };
-      };
+      case (?existing) { if (existing != caller) { Runtime.trap("Username already taken") } };
       case (null) {};
     };
-
     switch (artistPages.get(caller)) {
-      case (?existing) {
-        let oldLower = toLower(existing.username);
-        if (oldLower != lower) {
-          artistUsernameToArtist.remove(oldLower);
-        };
-      };
+      case (?existing) { if (toLower(existing.username) != lower) { artistUsernameToArtist.remove(toLower(existing.username)) } };
       case (null) {};
     };
-
     let now = Time.now();
     let existing = artistPages.get(caller);
     let page : ArtistPage = {
-      username;
-      bandName;
-      genre;
-      bio;
-      musicLinks;
-      tier = switch (tier) {
-        case (?t) { t };
-        case (null) {
-          switch (existing) {
-            case (?e) { e.tier };
-            case (null) { "free" };
-          };
-        };
-      };
-      profilePictureHash = switch (existing) {
-        case (?e) { e.profilePictureHash };
-        case (null) { null };
-      };
-      headerImageHash = switch (existing) {
-        case (?e) { e.headerImageHash };
-        case (null) { null };
-      };
-      createdAt = switch (existing) {
-        case (?e) { e.createdAt };
-        case (null) { now };
-      };
+      username; bandName; genre; bio; musicLinks;
+      tier = switch (tier) { case (?t) { t }; case (null) { switch (existing) { case (?e) { e.tier }; case (null) { "free" } } } };
+      profilePictureHash = switch (existing) { case (?e) { e.profilePictureHash }; case (null) { null } };
+      headerImageHash = switch (existing) { case (?e) { e.headerImageHash }; case (null) { null } };
+      location; website = normalizeWebsite(website);
+      createdAt = switch (existing) { case (?e) { e.createdAt }; case (null) { now } };
       updatedAt = now;
     };
     artistPages.add(caller, page);
@@ -929,994 +538,595 @@ actor {
 
   public shared ({ caller }) func updateArtistProfilePicture(pictureHash : ?Storage.ExternalBlob) : async () {
     requireAuth(caller);
-    let existing = switch (artistPages.get(caller)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Must create artist page first") };
-    };
-    artistPages.add(
-      caller,
-      {
-        username = existing.username;
-        bandName = existing.bandName;
-        genre = existing.genre;
-        bio = existing.bio;
-        musicLinks = existing.musicLinks;
-        tier = existing.tier;
-        profilePictureHash = pictureHash;
-        headerImageHash = existing.headerImageHash;
-        createdAt = existing.createdAt;
-        updatedAt = Time.now();
-      },
-    );
+    let existing = switch (artistPages.get(caller)) { case (?p) { p }; case (null) { Runtime.trap("No artist page") } };
+    artistPages.add(caller, { username = existing.username; bandName = existing.bandName; genre = existing.genre;
+      bio = existing.bio; musicLinks = existing.musicLinks; tier = existing.tier;
+      profilePictureHash = pictureHash; headerImageHash = existing.headerImageHash;
+      location = existing.location; website = existing.website;
+      createdAt = existing.createdAt; updatedAt = Time.now() });
   };
 
   public shared ({ caller }) func updateArtistHeaderImage(headerImageHash : ?Storage.ExternalBlob) : async () {
     requireAuth(caller);
-    let existing = switch (artistPages.get(caller)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Must create artist page first") };
-    };
-    artistPages.add(
-      caller,
-      {
-        username = existing.username;
-        bandName = existing.bandName;
-        genre = existing.genre;
-        bio = existing.bio;
-        musicLinks = existing.musicLinks;
-        tier = existing.tier;
-        profilePictureHash = existing.profilePictureHash;
-        headerImageHash;
-        createdAt = existing.createdAt;
-        updatedAt = Time.now();
-      },
-    );
+    let existing = switch (artistPages.get(caller)) { case (?p) { p }; case (null) { Runtime.trap("No artist page") } };
+    artistPages.add(caller, { username = existing.username; bandName = existing.bandName; genre = existing.genre;
+      bio = existing.bio; musicLinks = existing.musicLinks; tier = existing.tier;
+      profilePictureHash = existing.profilePictureHash; headerImageHash;
+      location = existing.location; website = existing.website;
+      createdAt = existing.createdAt; updatedAt = Time.now() });
   };
 
-  // ── User Profiles ────────────────────────────────────────────────────────────
+  // ── User Profiles ─────────────────────────────────────────────────────────
 
   public query func checkUsernameAvailability(username : Text) : async Bool {
     if (not isValidUsername(username)) { return false };
     let lower = toLower(username);
-    switch (usernameToUser.get(lower)) {
-      case (?_) { false };
-      case (null) { true };
-    };
+    usernameToUser.get(lower) == null and artistUsernameToArtist.get(lower) == null;
   };
 
   public query func getPrincipalByUsername(username : Text) : async ?Principal {
-    let lower = toLower(username);
-    usernameToUser.get(lower);
+    usernameToUser.get(toLower(username));
   };
 
   public query ({ caller }) func getProfile() : async ?UserProfile {
     userProfiles.get(caller);
   };
 
-  public shared ({ caller }) func setProfile(username : Text, displayName : Text, bio : Text) : async () {
+  public query func getProfileByPrincipal(principal : Principal) : async ?UserProfileResponse {
+    buildProfileResponse(principal, principal);
+  };
+
+  public query func getProfileByUsername(username : Text) : async ?UserProfileResponse {
+    switch (usernameToUser.get(toLower(username))) {
+      case (?principal) { buildProfileResponse(principal, principal) };
+      case (null) { null };
+    };
+  };
+
+  public shared ({ caller }) func setProfile(username : Text, displayName : Text, bio : Text, location : ?Text, website : ?Text) : async () {
     requireAuth(caller);
-
-    if (username == "") {
-      Runtime.trap("Username cannot be empty");
-    };
-    if (not isValidUsername(username)) {
-      Runtime.trap("Username must be 3-20 characters, alphanumeric and underscores only");
-    };
-    if (displayName == "") {
-      Runtime.trap("Display name cannot be empty");
-    };
-    if (displayName.size() > 50) {
-      Runtime.trap("Display name must be 50 characters or fewer");
-    };
-    if (bio.size() > 160) {
-      Runtime.trap("Bio must be 160 characters or fewer");
-    };
-
+    if (not isValidUsername(username)) { Runtime.trap("Username must be 3-20 chars, alphanumeric + underscores") };
+    if (displayName == "") { Runtime.trap("Display name required") };
+    if (displayName.size() > 50) { Runtime.trap("Display name max 50 characters") };
+    if (bio.size() > 160) { Runtime.trap("Bio max 160 characters") };
     let lower = toLower(username);
-
     switch (usernameToUser.get(lower)) {
-      case (?existingPrincipal) {
-        if (existingPrincipal != caller) {
-          Runtime.trap("Username is already taken");
-        };
-      };
+      case (?existing) { if (existing != caller) { Runtime.trap("Username already taken") } };
       case (null) {};
     };
-
+    switch (artistUsernameToArtist.get(lower)) {
+      case (?_) { Runtime.trap("Username already taken by an artist") };
+      case (null) {};
+    };
     switch (userProfiles.get(caller)) {
-      case (?existing) {
-        let oldLower = toLower(existing.username);
-        if (oldLower != lower) {
-          usernameToUser.remove(oldLower);
-        };
-      };
+      case (?existing) { if (toLower(existing.username) != lower) { usernameToUser.remove(toLower(existing.username)) } };
       case (null) {};
     };
-
     let now = Time.now();
     let existing = userProfiles.get(caller);
     let profile : UserProfile = {
-      username;
-      displayName;
-      bio;
-      profilePictureHash = switch (existing) {
-        case (?e) { e.profilePictureHash };
-        case (null) { null };
-      };
-      headerImageHash = switch (existing) {
-        case (?e) { e.headerImageHash };
-        case (null) { null };
-      };
-      createdAt = switch (existing) {
-        case (?e) { e.createdAt };
-        case (null) { now };
-      };
+      username; displayName; bio;
+      profilePictureHash = switch (existing) { case (?e) { e.profilePictureHash }; case (null) { null } };
+      headerImageHash = switch (existing) { case (?e) { e.headerImageHash }; case (null) { null } };
+      location; website = normalizeWebsite(website);
+      createdAt = switch (existing) { case (?e) { e.createdAt }; case (null) { now } };
       updatedAt = now;
     };
-
     userProfiles.add(caller, profile);
     usernameToUser.add(lower, caller);
   };
 
   public shared ({ caller }) func updateProfilePicture(pictureHash : ?Storage.ExternalBlob) : async () {
     requireAuth(caller);
-    let existing = switch (userProfiles.get(caller)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Must create profile first") };
-    };
-    userProfiles.add(
-      caller,
-      {
-        username = existing.username;
-        displayName = existing.displayName;
-        bio = existing.bio;
-        profilePictureHash = pictureHash;
-        headerImageHash = existing.headerImageHash;
-        createdAt = existing.createdAt;
-        updatedAt = Time.now();
-      },
-    );
+    let existing = switch (userProfiles.get(caller)) { case (?p) { p }; case (null) { Runtime.trap("Profile not found") } };
+    userProfiles.add(caller, { username = existing.username; displayName = existing.displayName;
+      bio = existing.bio; profilePictureHash = pictureHash; headerImageHash = existing.headerImageHash;
+      location = existing.location; website = existing.website;
+      createdAt = existing.createdAt; updatedAt = Time.now() });
   };
 
   public shared ({ caller }) func updateHeaderImage(headerImageHash : ?Storage.ExternalBlob) : async () {
     requireAuth(caller);
-    let existing = switch (userProfiles.get(caller)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Must create profile first") };
-    };
-    userProfiles.add(
-      caller,
-      {
-        username = existing.username;
-        displayName = existing.displayName;
-        bio = existing.bio;
-        profilePictureHash = existing.profilePictureHash;
-        headerImageHash;
-        createdAt = existing.createdAt;
-        updatedAt = Time.now();
-      },
-    );
+    let existing = switch (userProfiles.get(caller)) { case (?p) { p }; case (null) { Runtime.trap("Profile not found") } };
+    userProfiles.add(caller, { username = existing.username; displayName = existing.displayName;
+      bio = existing.bio; profilePictureHash = existing.profilePictureHash; headerImageHash;
+      location = existing.location; website = existing.website;
+      createdAt = existing.createdAt; updatedAt = Time.now() });
   };
 
-  func buildArtistPageResponse(user : Principal, caller : Principal) : ?ArtistPageResponse {
-    if (not caller.isAnonymous() and hasBlocked(user, caller)) {
-      return null;
+  // ── Posts ─────────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func createPost(
+    text : Text, mediaHash : ?Storage.ExternalBlob, mediaType : ?Text,
+    postType : PostType, authorIdentity : AuthorIdentity
+  ) : async Nat {
+    requireAuth(caller);
+    if (text.size() == 0 or text.size() > maxPostLength) { Runtime.trap("Post must be 1-280 characters") };
+    switch (mediaHash, mediaType) {
+      case (null, null) {};
+      case (?_, ?"image") {};
+      case (?_, ?"video") {};
+      case _ { Runtime.trap("Invalid media combination") };
     };
-    switch (artistPages.get(user)) {
-      case (null) { null };
-      case (?profile) {
-        let followersCount = switch (artistFollowers.get(user)) {
-          case (?m) { m.size() };
-          case (null) { 0 };
+    switch (authorIdentity) {
+      case (#fan) {
+        if (userProfiles.get(caller) == null) { Runtime.trap("Create a profile first") };
+        let count = switch (userPostCounts.get(caller)) { case (?n) { n }; case (null) { 0 } };
+        if (count >= maxPostsPerUser) { Runtime.trap("Post limit reached") };
+        userPostCounts.add(caller, count + 1);
+      };
+      case (#artist) {
+        if (artistPages.get(caller) == null) { Runtime.trap("Create an artist page first") };
+        let count = switch (artistPostCounts.get(caller)) { case (?n) { n }; case (null) { 0 } };
+        if (count >= maxPostsPerUser) { Runtime.trap("Post limit reached") };
+        artistPostCounts.add(caller, count + 1);
+      };
+    };
+    switch (postType) {
+      case (#reply(parentId)) {
+        switch (posts.get(parentId)) {
+          case (?_) { getPostRepliesMap(parentId).add(nextPostId, true) };
+          case (null) { Runtime.trap("Parent post not found") };
         };
-        let followingCount = switch (artistFollowing.get(user)) {
-          case (?m) { m.size() };
-          case (null) { 0 };
-        };
-        let postsCount = switch (artistPostCounts.get(user)) {
-          case (?n) { n };
-          case (null) { 0 };
-        };
-        let isAuthenticated = not caller.isAnonymous();
-        let isFollowed = if (isAuthenticated) {
-          switch (artistFollowers.get(user)) {
-            case (?m) { m.get(caller) != null };
-            case (null) { false };
+      };
+      case (#repost(originalId)) {
+        switch (posts.get(originalId)) {
+          case (?original) {
+            getNatPrincipalMap(postReposts, originalId).add(caller, true);
+            addNotification(original.author, caller, #repost(originalId));
           };
-        } else { false };
-        ?{
-          principal = user;
-          username = profile.username;
-          bandName = profile.bandName;
-          genre = profile.genre;
-          bio = profile.bio;
-          musicLinks = profile.musicLinks;
-          tier = profile.tier;
-          profilePictureHash = profile.profilePictureHash;
-          headerImageHash = profile.headerImageHash;
-          followerCount = followersCount;
-          followingCount = followingCount;
-          postCount = postsCount;
-          createdAt = profile.createdAt;
-          updatedAt = profile.updatedAt;
-          isFollowedByCurrentUser = isFollowed;
+          case (null) { Runtime.trap("Original post not found") };
         };
       };
-    };
-  };
-
-  // ── Posts ─────────────────────────────────────────────────────────────────────
-
-  public shared ({ caller }) func createPost(text : Text, mediaHash : ?Storage.ExternalBlob, mediaType : ?Text, isArtistPost : Bool) : async PostResponse {
-    requireAuth(caller);
-    validateMedia(mediaHash, mediaType);
-    if (text.size() == 0 and mediaHash == null) {
-      Runtime.trap("Post must contain text or media");
-    };
-    if (text.size() > maxPostLength) {
-      Runtime.trap("Post text must be 280 characters or fewer");
-    };
-    if (isArtistPost) {
-      let artist = switch (artistPages.get(caller)) {
-        case (null) { Runtime.trap("Artist page not found") };
-        case (?a) { a };
-      };
-      let postCount = switch (artistPostCounts.get(caller)) {
-        case (?count) { count };
-        case (null) { 0 };
-      };
-      if (postCount >= maxPostsPerArtist) {
-        Runtime.trap("Post cap reached (" # maxPostsPerArtist.toText() # " posts max)");
-      };
-      let now = Time.now();
-      let post : Post = {
-        id = nextPostId;
-        author = caller;
-        text;
-        mediaHash;
-        mediaType;
-        postType = #original;
-        authorIdentity = #artist;
-        createdAt = now;
-        editedAt = null;
-      };
-      posts.add(nextPostId, post);
-      nextPostId += 1;
-      incrementPostCount(caller, #artist);
-      indexPostHashtags(post.id, text);
-      notifyMentions(text, post.id, caller);
-      toPostResponse(post, ?caller);
-    } else {
-      requirePostCapNotReached(caller);
-      switch (userProfiles.get(caller)) {
-        case (null) { Runtime.trap("Must create profile before posting") };
-        case (?_) {};
-      };
-      let now = Time.now();
-      let id = nextPostId;
-      nextPostId += 1;
-
-      let post : Post = {
-        id;
-        author = caller;
-        text;
-        mediaHash;
-        mediaType;
-        postType = #original;
-        authorIdentity = #fan;
-        createdAt = now;
-        editedAt = null;
-      };
-
-      posts.add(id, post);
-      incrementPostCount(caller, #fan);
-      indexPostHashtags(id, text);
-      notifyMentions(text, id, caller);
-
-      toPostResponse(post, ?caller);
-    };
-  };
-
-  public query ({ caller }) func getArtistFeed(principal : Principal, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextPostId };
-    };
-    let isAnon = caller.isAnonymous();
-    let c = if (isAnon) { null } else { ?caller };
-    paginatePosts(
-      start,
-      effectiveLimit,
-      c,
-      func(post) {
-        post.author == principal and post.authorIdentity == #artist
-      },
-    );
-  };
-
-  public query ({ caller }) func getArtistFollowers(principal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let followingMap = switch (artistFollowers.get(principal)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?m) { m };
-    };
-    paginateFollows(followingMap, caller, offset, effectiveLimit);
-  };
-
-  public query ({ caller }) func getArtistFollowing(principal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let followingMap = switch (artistFollowing.get(principal)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?m) { m };
-    };
-    paginateFollows(followingMap, caller, offset, effectiveLimit);
-  };
-
-  public shared ({ caller }) func followArtist(artistPrincipal : Principal) : async () {
-    requireAuth(caller);
-    let _artistPage = switch (artistPages.get(artistPrincipal)) {
-      case (null) { Runtime.trap("Artist page not found") };
-      case (?a) { a };
-    };
-    if (caller == artistPrincipal) {
-      Runtime.trap("Cannot follow yourself");
-    };
-    switch (artistFollowers.get(artistPrincipal)) {
-      case (?m) {
-        if (m.size() >= maxFollowersPerArtist) {
-          Runtime.trap("Follow cap reached (" # maxFollowersPerArtist.toText() # " max)");
+      case (#quote(quotedId)) {
+        switch (posts.get(quotedId)) {
+          case (?quoted) { addNotification(quoted.author, caller, #quote(quotedId)) };
+          case (null) { Runtime.trap("Quoted post not found") };
         };
       };
-      case (null) {};
+      case (#original) {};
     };
-    getPrincipalMap(artistFollowing, caller).add(artistPrincipal, true);
-    getPrincipalMap(artistFollowers, artistPrincipal).add(caller, true);
+    let id = nextPostId;
+    nextPostId += 1;
+    let post : Post = { id; author = caller; text; mediaHash; mediaType; postType; authorIdentity; createdAt = Time.now(); editedAt = null };
+    posts.add(id, post);
+    indexPostHashtags(id, text);
+    notifyMentions(text, id, caller);
+    id;
   };
 
-  public shared ({ caller }) func unfollowArtist(artist : Principal) : async () {
+  public shared ({ caller }) func editPost(postId : Nat, newText : Text) : async () {
     requireAuth(caller);
-    getPrincipalMap(artistFollowing, caller).remove(artist);
-    getPrincipalMap(artistFollowers, artist).remove(caller);
+    if (newText.size() == 0 or newText.size() > maxPostLength) { Runtime.trap("Post must be 1-280 characters") };
+    let post = switch (posts.get(postId)) { case (?p) { p }; case (null) { Runtime.trap("Post not found") } };
+    if (post.author != caller) { Runtime.trap("Not your post") };
+    let elapsed : Int = Time.now() - post.createdAt;
+    if (elapsed > editDeleteWindowNanos) { Runtime.trap("Edit window expired") };
+    removePostHashtags(postId, post.text);
+    posts.add(postId, { id = post.id; author = post.author; text = newText; mediaHash = post.mediaHash;
+      mediaType = post.mediaType; postType = post.postType; authorIdentity = post.authorIdentity;
+      createdAt = post.createdAt; editedAt = ?Time.now() });
+    indexPostHashtags(postId, newText);
   };
 
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfileResponse {
-    buildProfileResponse(user, caller);
+  public shared ({ caller }) func deletePost(postId : Nat) : async () {
+    requireAuth(caller);
+    let post = switch (posts.get(postId)) { case (?p) { p }; case (null) { Runtime.trap("Post not found") } };
+    if (post.author != caller) { Runtime.trap("Not your post") };
+    let elapsed : Int = Time.now() - post.createdAt;
+    if (elapsed > editDeleteWindowNanos) { Runtime.trap("Delete window expired") };
+    removePostHashtags(postId, post.text);
+    posts.remove(postId);
+    switch (post.authorIdentity) {
+      case (#fan) {
+        let count : Int = switch (userPostCounts.get(caller)) { case (?n) { n }; case (null) { 0 } };
+        if (count > 0) { userPostCounts.add(caller, Int.abs(count - 1)) };
+      };
+      case (#artist) {
+        let count : Int = switch (artistPostCounts.get(caller)) { case (?n) { n }; case (null) { 0 } };
+        if (count > 0) { artistPostCounts.add(caller, Int.abs(count - 1)) };
+      };
+    };
   };
 
-  public query ({ caller }) func getProfileByUsername(username : Text) : async ?UserProfileResponse {
-    let lower = toLower(username);
-    switch (usernameToUser.get(lower)) {
+  public query func getPost(postId : Nat) : async ?PostResponse {
+    switch (posts.get(postId)) {
+      case (?post) { ?toPostResponse(post, null) };
       case (null) { null };
-      case (?user) { buildProfileResponse(user, caller) };
     };
   };
 
-  public query ({ caller }) func getFollowers(username : Text, offset : Nat, limit : Nat) : async PaginatedFollows {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let lower = toLower(username);
-    let user = switch (usernameToUser.get(lower)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?u) { u };
-    };
-    let followerMap = switch (followers.get(user)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?m) { m };
-    };
-    paginateFollows(followerMap, caller, offset, effectiveLimit);
+  public query ({ caller }) func getFeed(cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    let callerOpt = if (caller.isAnonymous()) { null } else { ?caller };
+    let followedSet = switch (following.get(caller)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    paginatePosts(cursor, limit, callerOpt, func(post) {
+      (post.authorIdentity == #fan) and
+      (followedSet.get(post.author) != null or post.author == caller) and
+      not isBlockedBidirectional(caller, post.author);
+    });
   };
 
-  public query ({ caller }) func getFollowing(username : Text, offset : Nat, limit : Nat) : async PaginatedFollows {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let lower = toLower(username);
-    let user = switch (usernameToUser.get(lower)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?u) { u };
-    };
-    let followingMap = switch (following.get(user)) {
-      case (null) { return { users = []; nextOffset = null; hasMore = false } };
-      case (?m) { m };
-    };
-    paginateFollows(followingMap, caller, offset, effectiveLimit);
+  public query ({ caller }) func getArtistFeed(cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    let callerOpt = if (caller.isAnonymous()) { null } else { ?caller };
+    let followedSet = switch (artistFollowing.get(caller)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    paginatePosts(cursor, limit, callerOpt, func(post) {
+      (post.authorIdentity == #artist) and
+      (followedSet.get(post.author) != null or post.author == caller) and
+      not isBlockedBidirectional(caller, post.author);
+    });
   };
 
-  public query ({ caller }) func getPostsByUsername(username : Text, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    let lower = toLower(username);
-    switch (usernameToUser.get(lower)) {
-      case (null) { { posts = []; nextCursor = null; hasMore = false } };
-      case (?user) {
-        if (not caller.isAnonymous() and hasBlocked(user, caller)) {
-          return { posts = []; nextCursor = null; hasMore = false };
-        };
-        let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-        let start = switch (cursor) {
-          case (?c) { c };
-          case (null) { nextPostId };
-        };
-        let c = if (caller.isAnonymous()) { null } else { ?caller };
-        paginatePosts(start, effectiveLimit, c, func(post) { post.author == user });
-      };
-    };
+  public query func getUserPosts(principal : Principal, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    paginatePosts(cursor, limit, null, func(post) {
+      post.author == principal and post.authorIdentity == #fan;
+    });
   };
 
-  public shared ({ caller }) func followUser(user : Principal) : async () {
-    requireAuth(caller);
-    if (caller == user) {
-      Runtime.trap("Cannot follow yourself");
-    };
-    switch (userProfiles.get(user)) {
-      case (null) { Runtime.trap("User not found") };
-      case (?_) {};
-    };
-    if (isBlockedBidirectional(caller, user)) {
-      Runtime.trap("Cannot interact with this user");
-    };
-    let callerFollowing = getPrincipalMap(following, caller);
-    let alreadyFollowing = callerFollowing.get(user) != null;
-    callerFollowing.add(user, true);
-    getPrincipalMap(followers, user).add(caller, true);
-    if (not alreadyFollowing) {
-      addNotification(user, caller, #follow);
-    };
+  public query func getArtistPosts(principal : Principal, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    paginatePosts(cursor, limit, null, func(post) {
+      post.author == principal and post.authorIdentity == #artist;
+    });
   };
 
-  public shared ({ caller }) func unfollowUser(user : Principal) : async () {
-    requireAuth(caller);
-    getPrincipalMap(following, caller).remove(user);
-    getPrincipalMap(followers, user).remove(caller);
+  public query func getExplorePosts(cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    paginatePosts(cursor, limit, null, func(post) {
+      post.postType == #original;
+    });
   };
 
-  public shared ({ caller }) func blockUser(user : Principal) : async () {
-    requireAuth(caller);
-    if (caller == user) {
-      Runtime.trap("Cannot block yourself");
-    };
-    switch (userProfiles.get(user)) {
-      case (null) { Runtime.trap("User not found") };
-      case (?_) {};
-    };
-    getPrincipalMap(blocks, caller).add(user, true);
-    getPrincipalMap(following, caller).remove(user);
-    getPrincipalMap(followers, user).remove(caller);
-    getPrincipalMap(following, user).remove(caller);
-    getPrincipalMap(followers, caller).remove(user);
+  public query func getPostReplies(postId : Nat, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    paginatePosts(cursor, limit, null, func(post) {
+      switch (post.postType) { case (#reply(pid)) { pid == postId }; case _ { false } };
+    });
   };
 
-  public shared ({ caller }) func unblockUser(user : Principal) : async () {
-    requireAuth(caller);
-    getPrincipalMap(blocks, caller).remove(user);
-  };
-
-  public shared ({ caller }) func muteUser(user : Principal) : async () {
-    requireAuth(caller);
-    if (caller == user) {
-      Runtime.trap("Cannot mute yourself");
-    };
-    switch (userProfiles.get(user)) {
-      case (null) { Runtime.trap("User not found") };
-      case (?_) {};
-    };
-    getPrincipalMap(mutes, caller).add(user, true);
-  };
-
-  public shared ({ caller }) func unmuteUser(user : Principal) : async () {
-    requireAuth(caller);
-    getPrincipalMap(mutes, caller).remove(user);
-  };
+  // ── Likes ─────────────────────────────────────────────────────────────────
 
   public shared ({ caller }) func likePost(postId : Nat) : async () {
     requireAuth(caller);
-    let post = switch (posts.get(postId)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Post not found") };
-    };
-    if (isBlockedBidirectional(caller, post.author)) {
-      Runtime.trap("Cannot interact with this user");
-    };
-    let likes = getNatPrincipalMap(postLikes, postId);
-    let alreadyLiked = likes.get(caller) != null;
-    likes.add(caller, true);
-    if (not alreadyLiked) {
-      addNotification(post.author, caller, #like(postId));
-    };
+    let post = switch (posts.get(postId)) { case (?p) { p }; case (null) { Runtime.trap("Post not found") } };
+    getNatPrincipalMap(postLikes, postId).add(caller, true);
+    addNotification(post.author, caller, #like(postId));
   };
 
   public shared ({ caller }) func unlikePost(postId : Nat) : async () {
     requireAuth(caller);
-    switch (postLikes.get(postId)) {
-      case (?m) { m.remove(caller) };
-      case (null) {};
-    };
+    switch (postLikes.get(postId)) { case (?m) { m.remove(caller) }; case (null) {} };
   };
 
-  public shared ({ caller }) func createReply(parentPostId : Nat, text : Text, mediaHash : ?Storage.ExternalBlob, mediaType : ?Text) : async PostResponse {
+  public query func getPostLikes(postId : Nat) : async Nat {
+    switch (postLikes.get(postId)) { case (?m) { m.size() }; case (null) { 0 } };
+  };
+
+  // ── Follows ───────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func followUser(target : Principal) : async () {
     requireAuth(caller);
-    validateMedia(mediaHash, mediaType);
-    requirePostCapNotReached(caller);
-    switch (userProfiles.get(caller)) {
-      case (null) { Runtime.trap("Must create profile before replying") };
-      case (?_) {};
-    };
-    let parentPost = switch (posts.get(parentPostId)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Parent post not found") };
-    };
-    if (isBlockedBidirectional(caller, parentPost.author)) {
-      Runtime.trap("Cannot interact with this user");
-    };
-    if (text.size() == 0 and mediaHash == null) {
-      Runtime.trap("Reply must contain text or media");
-    };
-    if (text.size() > maxPostLength) {
-      Runtime.trap("Reply text must be 280 characters or fewer");
-    };
-
-    let now = Time.now();
-    let id = nextPostId;
-    nextPostId += 1;
-
-    let reply : Post = {
-      id;
-      author = caller;
-      text;
-      mediaHash;
-      mediaType;
-      postType = #reply(parentPostId);
-      authorIdentity = #fan;
-      createdAt = now;
-      editedAt = null;
-    };
-
-    posts.add(id, reply);
-    incrementPostCount(caller, #fan);
-    getPostReplies(parentPostId).add(id, true);
-    indexPostHashtags(id, text);
-    addNotification(parentPost.author, caller, #reply(parentPostId));
-    notifyMentions(text, id, caller);
-
-    toPostResponse(reply, ?caller);
+    if (caller == target) { Runtime.trap("Cannot follow yourself") };
+    if (hasBlocked(target, caller)) { Runtime.trap("Cannot follow this user") };
+    getPrincipalMap(following, caller).add(target, true);
+    getPrincipalMap(followers, target).add(caller, true);
+    addNotification(target, caller, #follow);
   };
 
-  public query ({ caller }) func getReplies(postId : Nat, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let replyIds = switch (postReplies.get(postId)) {
-      case (?m) { m };
-      case (null) {
-        return { posts = []; nextCursor = null; hasMore = false };
-      };
-    };
-    paginatePostIds(replyIds, caller, cursor, effectiveLimit);
-  };
-
-  public shared ({ caller }) func repostPost(postId : Nat) : async PostResponse {
+  public shared ({ caller }) func unfollowUser(target : Principal) : async () {
     requireAuth(caller);
-    requirePostCapNotReached(caller);
-    switch (userProfiles.get(caller)) {
-      case (null) { Runtime.trap("Must create profile before reposting") };
-      case (?_) {};
-    };
-    let originalPost = switch (posts.get(postId)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Post not found") };
-    };
-    if (isBlockedBidirectional(caller, originalPost.author)) {
-      Runtime.trap("Cannot interact with this user");
-    };
-    switch (postReposts.get(postId)) {
-      case (?m) {
-        if (m.get(caller) != null) {
-          Runtime.trap("Already reposted this post");
-        };
-      };
-      case (null) {};
-    };
-
-    let now = Time.now();
-    let id = nextPostId;
-    nextPostId += 1;
-
-    let repost : Post = {
-      id;
-      author = caller;
-      text = "";
-      mediaHash = null;
-      mediaType = null;
-      postType = #repost(postId);
-      authorIdentity = #fan;
-      createdAt = now;
-      editedAt = null;
-    };
-
-    posts.add(id, repost);
-    incrementPostCount(caller, #fan);
-    getNatPrincipalMap(postReposts, postId).add(caller, true);
-    getMap<Nat>(repostIndex, caller).add(postId, id);
-    addNotification(originalPost.author, caller, #repost(postId));
-
-    toPostResponse(repost, ?caller);
+    switch (following.get(caller)) { case (?m) { m.remove(target) }; case (null) {} };
+    switch (followers.get(target)) { case (?m) { m.remove(caller) }; case (null) {} };
   };
 
-  public shared ({ caller }) func undoRepost(postId : Nat) : async () {
+  public shared ({ caller }) func followArtist(artistPrincipal : Principal) : async () {
     requireAuth(caller);
-    switch (posts.get(postId)) {
-      case (null) { Runtime.trap("Post not found") };
-      case (?_) {};
-    };
-    switch (postReposts.get(postId)) {
-      case (?m) { m.remove(caller) };
-      case (null) {};
-    };
-    let userReposts = getMap(repostIndex, caller);
-    switch (userReposts.get(postId)) {
-      case (?repostId) {
-        posts.remove(repostId);
-        decrementPostCount(caller, #fan);
-        userReposts.remove(postId);
-      };
-      case (null) {};
-    };
+    if (artistPages.get(artistPrincipal) == null) { Runtime.trap("Artist not found") };
+    getPrincipalMap(artistFollowing, caller).add(artistPrincipal, true);
+    getPrincipalMap(artistFollowers, artistPrincipal).add(caller, true);
+    addNotification(artistPrincipal, caller, #follow);
   };
 
-  public shared ({ caller }) func quotePost(postId : Nat, text : Text, mediaHash : ?Storage.ExternalBlob, mediaType : ?Text) : async PostResponse {
+  public shared ({ caller }) func unfollowArtist(artistPrincipal : Principal) : async () {
     requireAuth(caller);
-    validateMedia(mediaHash, mediaType);
-    requirePostCapNotReached(caller);
-    switch (userProfiles.get(caller)) {
-      case (null) { Runtime.trap("Must create profile before quoting") };
-      case (?_) {};
-    };
-    let originalPost = switch (posts.get(postId)) {
-      case (?p) { p };
-      case (null) { Runtime.trap("Post not found") };
-    };
-    if (isBlockedBidirectional(caller, originalPost.author)) {
-      Runtime.trap("Cannot interact with this user");
-    };
-    if (text.size() == 0 and mediaHash == null) {
-      Runtime.trap("Quote must contain text or media");
-    };
-    if (text.size() > maxPostLength) {
-      Runtime.trap("Quote text must be 280 characters or fewer");
-    };
-
-    let now = Time.now();
-    let id = nextPostId;
-    nextPostId += 1;
-
-    let quote : Post = {
-      id;
-      author = caller;
-      text;
-      mediaHash;
-      mediaType;
-      postType = #quote(postId);
-      authorIdentity = #fan;
-      createdAt = now;
-      editedAt = null;
-    };
-
-    posts.add(id, quote);
-    incrementPostCount(caller, #fan);
-    indexPostHashtags(id, text);
-    addNotification(originalPost.author, caller, #quote(postId));
-    notifyMentions(text, id, caller);
-
-    toPostResponse(quote, ?caller);
+    switch (artistFollowing.get(caller)) { case (?m) { m.remove(artistPrincipal) }; case (null) {} };
+    switch (artistFollowers.get(artistPrincipal)) { case (?m) { m.remove(caller) }; case (null) {} };
   };
 
-  public query ({ caller }) func searchPosts(searchText : Text, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    if (searchText == "") {
-      return { posts = []; nextCursor = null; hasMore = false };
-    };
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextPostId };
-    };
-    let isAnon = caller.isAnonymous();
-    let c = if (isAnon) { null } else { ?caller };
-    paginatePosts(
-      start,
-      effectiveLimit,
-      c,
-      func(post) {
-        if (not isAnon and isBlockedBidirectional(caller, post.author)) {
-          false;
-        } else {
-          textContains(post.text, searchText);
-        };
-      },
-    );
-  };
-
-  public query ({ caller }) func searchUsers(searchText : Text, limit : Nat) : async [UserProfileResponse] {
-    if (searchText == "") {
-      return [];
-    };
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let results = List.empty<UserProfileResponse>();
-
-    let isAnon = caller.isAnonymous();
-    for ((principal, profile) in userProfiles.entries()) {
-      if (results.size() >= effectiveLimit) {
-        return results.toArray();
-      };
-      if (not isAnon and isBlockedBidirectional(caller, principal)) {
-        // skip
-      } else if (textContains(profile.username, searchText) or textContains(profile.displayName, searchText)) {
-        switch (buildProfileResponse(principal, caller)) {
-          case (?response) { results.add(response) };
-          case (null) {};
+  public query func getFollowers(principal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let principalMap = switch (followers.get(principal)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    let result = List.empty<FollowUserResponse>();
+    var skipped : Nat = 0; var collected : Nat = 0; var hasMore = false;
+    for ((p, _) in principalMap.entries()) {
+      switch (userProfiles.get(p)) {
+        case (null) {};
+        case (?profile) {
+          if (skipped < offset) { skipped += 1 }
+          else if (collected < effectiveLimit) {
+            result.add({ principal = p; username = profile.username; displayName = profile.displayName; profilePictureHash = profile.profilePictureHash });
+            collected += 1;
+          } else { hasMore := true };
         };
       };
     };
-    results.toArray();
+    { users = result.toArray(); nextOffset = if (hasMore) { ?(offset + effectiveLimit) } else { null }; hasMore };
   };
 
-  public query func getTrendingHashtags(limit : Nat) : async [TrendingHashtag] {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 10 } else { limit };
-    let now = Time.now();
-    let windowNanos : Int = 86_400_000_000_000;
+  public query func getFollowing(principal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let principalMap = switch (following.get(principal)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    let result = List.empty<FollowUserResponse>();
+    var skipped : Nat = 0; var collected : Nat = 0; var hasMore = false;
+    for ((p, _) in principalMap.entries()) {
+      switch (userProfiles.get(p)) {
+        case (null) {};
+        case (?profile) {
+          if (skipped < offset) { skipped += 1 }
+          else if (collected < effectiveLimit) {
+            result.add({ principal = p; username = profile.username; displayName = profile.displayName; profilePictureHash = profile.profilePictureHash });
+            collected += 1;
+          } else { hasMore := true };
+        };
+      };
+    };
+    { users = result.toArray(); nextOffset = if (hasMore) { ?(offset + effectiveLimit) } else { null }; hasMore };
+  };
 
-    let trending = List.empty<TrendingHashtag>();
+  public query func getArtistFollowers(artistPrincipal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let principalMap = switch (artistFollowers.get(artistPrincipal)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    let result = List.empty<FollowUserResponse>();
+    var skipped : Nat = 0; var collected : Nat = 0; var hasMore = false;
+    for ((p, _) in principalMap.entries()) {
+      switch (userProfiles.get(p)) {
+        case (null) {};
+        case (?profile) {
+          if (skipped < offset) { skipped += 1 }
+          else if (collected < effectiveLimit) {
+            result.add({ principal = p; username = profile.username; displayName = profile.displayName; profilePictureHash = profile.profilePictureHash });
+            collected += 1;
+          } else { hasMore := true };
+        };
+      };
+    };
+    { users = result.toArray(); nextOffset = if (hasMore) { ?(offset + effectiveLimit) } else { null }; hasMore };
+  };
 
-    for ((tag, postIds) in hashtagIndex.entries()) {
-      var count : Nat = 0;
-      for ((postId, _) in postIds.entries()) {
-        switch (posts.get(postId)) {
-          case (?post) {
-            if (now - post.createdAt <= windowNanos) {
-              count += 1;
+  public query func getArtistFollowing(artistPrincipal : Principal, offset : Nat, limit : Nat) : async PaginatedFollows {
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let principalMap = switch (artistFollowing.get(artistPrincipal)) { case (?m) { m }; case (null) { Map.empty<Principal, Bool>() } };
+    let result = List.empty<FollowUserResponse>();
+    var skipped : Nat = 0; var collected : Nat = 0; var hasMore = false;
+    for ((p, _) in principalMap.entries()) {
+      switch (userProfiles.get(p)) {
+        case (null) {};
+        case (?profile) {
+          if (skipped < offset) { skipped += 1 }
+          else if (collected < effectiveLimit) {
+            result.add({ principal = p; username = profile.username; displayName = profile.displayName; profilePictureHash = profile.profilePictureHash });
+            collected += 1;
+          } else { hasMore := true };
+        };
+      };
+    };
+    { users = result.toArray(); nextOffset = if (hasMore) { ?(offset + effectiveLimit) } else { null }; hasMore };
+  };
+
+  // ── Reposts ───────────────────────────────────────────────────────────────
+
+  public query func getPostReposts(postId : Nat) : async Nat {
+    switch (postReposts.get(postId)) { case (?m) { m.size() }; case (null) { 0 } };
+  };
+
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  public query func searchPosts(query_ : Text, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    let q = toLower(query_);
+    paginatePosts(cursor, limit, null, func(post) {
+      toLower(post.text).size() >= q.size() and
+      (func() : Bool {
+        let h = toLower(post.text);
+        let hChars = List.empty<Char>(); for (c in h.chars()) { hChars.add(c) };
+        let qChars = List.empty<Char>(); for (c in q.chars()) { qChars.add(c) };
+        let hArr = hChars.toArray(); let qArr = qChars.toArray();
+        let hLen = hArr.size(); let qLen = qArr.size();
+        if (qLen == 0) { return true };
+        var i = 0;
+        var found = false;
+        while (i + qLen <= hLen and not found) {
+          var j = 0; var match = true;
+          while (j < qLen and match) { if (hArr[i+j] != qArr[j]) { match := false }; j += 1 };
+          if (match) { found := true };
+          i += 1;
+        };
+        found;
+      })();
+    });
+  };
+
+  public query func searchUsers(query_ : Text) : async [UserProfileResponse] {
+    let q = toLower(query_);
+    let result = List.empty<UserProfileResponse>();
+    for ((_, profile) in userProfiles.entries()) {
+      if (toLower(profile.username).size() >= q.size() or toLower(profile.displayName).size() >= q.size()) {
+        switch (usernameToUser.get(toLower(profile.username))) {
+          case (?principal) {
+            switch (buildProfileResponse(principal, principal)) {
+              case (?resp) {
+                if (result.size() < 20) { result.add(resp) };
+              };
+              case (null) {};
             };
           };
           case (null) {};
         };
-      };
-      if (count > 0) {
-        trending.add({ tag; count });
-      };
-    };
-
-    trending.sortInPlace(
-      func(a, b) {
-        if (a.count > b.count) { #less } else if (a.count < b.count) {
-          #greater;
-        } else { #equal };
-      }
-    );
-
-    let result = List.empty<TrendingHashtag>();
-    for (item in trending.values()) {
-      if (result.size() < effectiveLimit) {
-        result.add(item);
       };
     };
     result.toArray();
   };
 
+  public query func searchArtists(query_ : Text) : async [ArtistPageResponse] {
+    let q = toLower(query_);
+    let result = List.empty<ArtistPageResponse>();
+    for ((principal, page) in artistPages.entries()) {
+      if (result.size() < 20) {
+        let uLower = toLower(page.username);
+        let qLen = q.size();
+        let uContains = if (uLower.size() >= qLen) {
+          let uChars = List.empty<Char>(); for (c in uLower.chars()) { uChars.add(c) };
+          let qChars = List.empty<Char>(); for (c in q.chars()) { qChars.add(c) };
+          let uArr = uChars.toArray(); let qArr = qChars.toArray();
+          let uLen = uArr.size();
+          var i = 0; var found = false;
+          while (i + qLen <= uLen and not found) {
+            var j = 0; var match = true;
+            while (j < qLen and match) { if (uArr[i+j] != qArr[j]) { match := false }; j += 1 };
+            if (match) { found := true };
+            i += 1;
+          };
+          found
+        } else { false };
+        if (uContains) { result.add(toArtistPageResponse(principal, page, principal)) };
+      };
+    };
+    result.toArray();
+  };
+
+  // ── Hashtags ──────────────────────────────────────────────────────────────
+
+  public query func getPostsByHashtag(tag : Text, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
+    let lower = toLower(tag);
+    paginatePosts(cursor, limit, null, func(post) {
+      switch (hashtagIndex.get(lower)) {
+        case (?m) { m.get(post.id) != null };
+        case (null) { false };
+      };
+    });
+  };
+
+  public query func getTrendingHashtags(maxResults : Nat) : async [TrendingHashtag] {
+    let limit = if (maxResults > 20) { 20 } else if (maxResults == 0) { 10 } else { maxResults };
+    let tags = List.empty<TrendingHashtag>();
+    for ((tag, postMap) in hashtagIndex.entries()) {
+      tags.add({ tag; count = postMap.size() });
+    };
+    tags.sortInPlace(func(a, b) {
+      if (a.count > b.count) { #less } else if (a.count < b.count) { #greater } else { #equal };
+    });
+    let result = List.empty<TrendingHashtag>();
+    var i = 0;
+    for (t in tags.values()) {
+      if (i < limit) { result.add(t); i += 1 };
+    };
+    result.toArray();
+  };
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+
   public query ({ caller }) func getNotifications(cursor : ?Nat, limit : Nat) : async PaginatedNotifications {
     requireAuth(caller);
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-
-    let notifs = switch (userNotifications.get(caller)) {
-      case (?m) { m };
-      case (null) {
-        return { notifications = []; nextCursor = null; hasMore = false };
-      };
-    };
-
-    let idList = List.empty<Nat>();
-    for ((id, _) in notifs.entries()) {
-      idList.add(id);
-    };
-    idList.sortInPlace(
-      func(a, b) {
-        if (a > b) { #less } else if (a < b) { #greater } else { #equal };
-      }
-    );
-
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextNotificationId };
-    };
-
-    let resultBuf = List.empty<Notification>();
+    let effectiveLimit = if (limit > 50) { 50 } else if (limit == 0) { 20 } else { limit };
+    let notifs = getNotifMap(caller);
+    let allNotifs = List.empty<Notification>();
+    for ((_, n) in notifs.entries()) { allNotifs.add(n) };
+    allNotifs.sortInPlace(func(a, b) {
+      if (a.id > b.id) { #less } else if (a.id < b.id) { #greater } else { #equal };
+    });
+    let start = switch (cursor) { case (?c) { c }; case (null) { nextNotificationId } };
+    let result = List.empty<Notification>();
     var foundExtra = false;
-    for (id in idList.values()) {
-      if (not foundExtra and id < start) {
-        switch (notifs.get(id)) {
-          case (?notif) {
-            if (resultBuf.size() < effectiveLimit) {
-              resultBuf.add(notif);
-            } else {
-              foundExtra := true;
-            };
-          };
-          case (null) {};
-        };
+    for (n in allNotifs.values()) {
+      if (not foundExtra and n.id < start) {
+        if (result.size() < effectiveLimit) { result.add(n) } else { foundExtra := true };
       };
     };
-
-    let arr = resultBuf.toArray();
-    let nextCursor : ?Nat = if (foundExtra and arr.size() > 0) {
-      ?arr[arr.size() - 1].id;
-    } else {
-      null;
-    };
+    let arr = result.toArray();
+    let nextCursor : ?Nat = if (foundExtra and arr.size() > 0) { ?arr[arr.size() - 1].id } else { null };
     { notifications = arr; nextCursor; hasMore = foundExtra };
   };
 
-  public shared ({ caller }) func markNotificationRead(notifId : Nat) : async () {
-    requireAuth(caller);
-    markNotifRead(getMap(userNotifications, caller), notifId);
-  };
-
-  public shared ({ caller }) func markAllNotificationsRead() : async () {
-    requireAuth(caller);
-    let notifs = getMap(userNotifications, caller);
-    for ((id, _) in notifs.entries()) {
-      markNotifRead(notifs, id);
-    };
-  };
-
   public query ({ caller }) func getUnreadNotificationCount() : async Nat {
-    requireAuth(caller);
+    if (caller.isAnonymous()) { return 0 };
     switch (userNotifications.get(caller)) {
       case (null) { 0 };
       case (?notifs) {
-        var count : Nat = 0;
-        for ((_, notif) in notifs.entries()) {
-          if (not notif.isRead) {
-            count += 1;
-          };
-        };
+        var count = 0;
+        for ((_, n) in notifs.entries()) { if (not n.isRead) { count += 1 } };
         count;
       };
     };
   };
 
-  public query ({ caller }) func getPost(postId : Nat) : async ?PostResponse {
-    switch (posts.get(postId)) {
-      case (null) { null };
-      case (?post) {
-        let c = if (caller.isAnonymous()) { null } else { ?caller };
-        ?toPostResponse(post, c);
+  public shared ({ caller }) func markNotificationRead(notifId : Nat) : async () {
+    requireAuth(caller);
+    let notifs = getNotifMap(caller);
+    switch (notifs.get(notifId)) {
+      case (?notif) {
+        notifs.add(notifId, { id = notif.id; notificationType = notif.notificationType;
+          actorPrincipal = notif.actorPrincipal; actorUsername = notif.actorUsername;
+          createdAt = notif.createdAt; isRead = true });
       };
+      case (null) {};
     };
   };
 
-  public shared ({ caller }) func editPost(postId : Nat, text : Text) : async PostResponse {
+  public shared ({ caller }) func markAllNotificationsRead() : async () {
     requireAuth(caller);
-    if (text.size() == 0) { Runtime.trap("Post text cannot be empty") };
-    if (text.size() > maxPostLength) {
-      Runtime.trap("Post text must be 280 characters or fewer");
-    };
-    let post = switch (posts.get(postId)) {
-      case (null) { Runtime.trap("Post not found") };
-      case (?p) { p };
-    };
-    if (post.author != caller) { Runtime.trap("Not the post author") };
-    let now = Time.now();
-    if (now - post.createdAt > editDeleteWindowNanos) {
-      Runtime.trap("Edit window has expired");
-    };
-    let updated : Post = {
-      id = post.id;
-      author = post.author;
-      text;
-      mediaHash = post.mediaHash;
-      mediaType = post.mediaType;
-      postType = post.postType;
-      authorIdentity = post.authorIdentity;
-      createdAt = post.createdAt;
-      editedAt = ?now;
-    };
-    posts.add(postId, updated);
-    toPostResponse(updated, ?caller);
-  };
-
-  public shared ({ caller }) func deletePost(postId : Nat) : async () {
-    requireAuth(caller);
-    let post = switch (posts.get(postId)) {
-      case (null) { Runtime.trap("Post not found") };
-      case (?p) { p };
-    };
-    if (post.author != caller) { Runtime.trap("Not the post author") };
-    let now = Time.now();
-    if (now - post.createdAt > editDeleteWindowNanos) {
-      Runtime.trap("Delete window has expired");
-    };
-    posts.remove(postId);
-    switch (post.authorIdentity) {
-      case (#fan) { decrementPostCount(caller, #fan) };
-      case (#artist) { decrementPostCount(caller, #artist) };
-    };
-  };
-
-  public query ({ caller }) func getGlobalFeed(cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextPostId };
-    };
-    let isAnon = caller.isAnonymous();
-    let c = if (isAnon) { null } else { ?caller };
-    paginatePosts(
-      start,
-      effectiveLimit,
-      c,
-      func(post) {
-        switch (post.postType) {
-          case (#original) {
-            if (not isAnon) {
-              not isBlockedBidirectional(caller, post.author);
-            } else { true };
+    let notifs = getNotifMap(caller);
+    let ids = List.empty<Nat>();
+    for ((id, _) in notifs.entries()) { ids.add(id) };
+    for (id in ids.values()) {
+      switch (notifs.get(id)) {
+        case (?notif) {
+          if (not notif.isRead) {
+            notifs.add(id, { id = notif.id; notificationType = notif.notificationType;
+              actorPrincipal = notif.actorPrincipal; actorUsername = notif.actorUsername;
+              createdAt = notif.createdAt; isRead = true });
           };
-          case (_) { false };
         };
-      },
-    );
-  };
-
-  public query ({ caller }) func getHomeFeed(cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    if (caller.isAnonymous()) {
-      return { posts = []; nextCursor = null; hasMore = false };
-    };
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextPostId };
-    };
-    let myFollowing = switch (following.get(caller)) {
-      case (?m) { m };
-      case (null) {
-        return paginatePosts(
-          start,
-          effectiveLimit,
-          ?caller,
-          func(post) { post.author == caller },
-        );
+        case (null) {};
       };
     };
-    paginatePosts(
-      start,
-      effectiveLimit,
-      ?caller,
-      func(post) {
-        (post.author == caller or myFollowing.get(post.author) != null)
-          and not isBlockedBidirectional(caller, post.author);
-      },
-    );
   };
 
-  public query ({ caller }) func getPostsByHashtag(tag : Text, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    let lower = toLower(tag);
-    let tagPosts = switch (hashtagIndex.get(lower)) {
-      case (null) { return { posts = []; nextCursor = null; hasMore = false } };
-      case (?m) { m };
+  // ── Moderation ────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func blockUser(target : Principal) : async () {
+    requireAuth(caller);
+    if (caller == target) { Runtime.trap("Cannot block yourself") };
+    getPrincipalMap(blocks, caller).add(target, true);
+    switch (following.get(caller)) { case (?m) { m.remove(target) }; case (null) {} };
+    switch (followers.get(caller)) { case (?m) { m.remove(target) }; case (null) {} };
+    switch (following.get(target)) { case (?m) { m.remove(caller) }; case (null) {} };
+    switch (followers.get(target)) { case (?m) { m.remove(caller) }; case (null) {} };
+  };
+
+  public shared ({ caller }) func unblockUser(target : Principal) : async () {
+    requireAuth(caller);
+    switch (blocks.get(caller)) { case (?m) { m.remove(target) }; case (null) {} };
+  };
+
+  public shared ({ caller }) func muteUser(target : Principal) : async () {
+    requireAuth(caller);
+    if (caller == target) { Runtime.trap("Cannot mute yourself") };
+    getPrincipalMap(mutes, caller).add(target, true);
+  };
+
+  public shared ({ caller }) func unmuteUser(target : Principal) : async () {
+    requireAuth(caller);
+    switch (mutes.get(caller)) { case (?m) { m.remove(target) }; case (null) {} };
+  };
+
+  public query ({ caller }) func getBlockedUsers() : async [Principal] {
+    requireAuth(caller);
+    switch (blocks.get(caller)) {
+      case (null) { [] };
+      case (?m) { let result = List.empty<Principal>(); for ((p, _) in m.entries()) { result.add(p) }; result.toArray() };
     };
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    paginatePostIds(tagPosts, caller, cursor, effectiveLimit);
   };
 
-  public query ({ caller }) func getPostsByPrincipal(user : Principal, cursor : ?Nat, limit : Nat) : async PaginatedPosts {
-    if (not caller.isAnonymous() and hasBlocked(user, caller)) {
-      return { posts = []; nextCursor = null; hasMore = false };
+  public query ({ caller }) func getMutedUsers() : async [Principal] {
+    requireAuth(caller);
+    switch (mutes.get(caller)) {
+      case (null) { [] };
+      case (?m) { let result = List.empty<Principal>(); for ((p, _) in m.entries()) { result.add(p) }; result.toArray() };
     };
-    let effectiveLimit = if (limit == 0 or limit > 50) { 20 } else { limit };
-    let start = switch (cursor) {
-      case (?c) { c };
-      case (null) { nextPostId };
-    };
-    let c = if (caller.isAnonymous()) { null } else { ?caller };
-    paginatePosts(start, effectiveLimit, c, func(post) { post.author == user });
   };
-
-  // Upgrade safety hook.
-  // IMPORTANT: All new fields added to stored record types (UserProfile, ArtistPage, Post, Notification)
-  // MUST be optional (?Type) to ensure backward-compatible Candid deserialization on upgrade.
-  system func postupgrade() {
-    schemaVersion += 1;
-  };
-
 };

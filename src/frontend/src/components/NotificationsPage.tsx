@@ -200,7 +200,7 @@ export function NotificationsPage() {
                   }
                 : {
                     to: "/$username" as const,
-                    params: { username: notif.actorUsername },
+                    params: { username: notif.actorUsername ?? "" },
                   };
 
             return (
@@ -215,7 +215,7 @@ export function NotificationsPage() {
                 />
                 <Avatar className="h-9 w-9 shrink-0">
                   <AvatarFallback className="text-xs">
-                    {getInitials(notif.actorUsername)}
+                    {getInitials(notif.actorUsername ?? "")}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">

@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getRouteApi } from "@tanstack/react-router";
-import { Camera, Loader2, Music } from "lucide-react";
+import { format } from "date-fns";
+import { Calendar, Camera, Link2, Loader2, MapPin, Music } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useActiveProfile } from "../contexts/ActiveProfileContext";
@@ -18,7 +19,7 @@ import {
 } from "../hooks/useArtistPageQueries";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useMediaUpload } from "../hooks/useMediaUpload";
-import { getInitials } from "../utils/formatting";
+import { fromNanoseconds, getInitials } from "../utils/formatting";
 import { BackButton } from "./BackButton";
 import { EditArtistProfileDialog } from "./EditArtistProfileDialog";
 import { FeedSkeleton } from "./FeedSkeleton";
@@ -379,6 +380,38 @@ export function ArtistProfilePage() {
         {artistPage.bio && (
           <p className="mt-3 whitespace-pre-wrap text-sm">{artistPage.bio}</p>
         )}
+
+        {/* Location, website, joined */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          {artistPage.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" />
+              {artistPage.location}
+            </span>
+          )}
+          {artistPage.website &&
+            (() => {
+              const url = artistPage.website.startsWith("http")
+                ? artistPage.website
+                : `https://${artistPage.website}`;
+              const display = artistPage.website.replace(/^https?:\/\//, "");
+              return (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-primary hover:underline"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  {display}
+                </a>
+              );
+            })()}
+          <span className="flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5" />
+            Joined {format(fromNanoseconds(artistPage.createdAt), "MMM yyyy")}
+          </span>
+        </div>
 
         {/* Follower/following counts */}
         <div className="mt-3 flex gap-4 text-sm">

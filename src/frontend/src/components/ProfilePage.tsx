@@ -11,8 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link, getRouteApi } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
+  Calendar,
   Camera,
+  Link2,
   Loader2,
+  MapPin,
   MoreHorizontal,
   PenLine,
   Search,
@@ -533,8 +536,35 @@ export function ProfilePage() {
           />
         )}
 
-        <div className="mt-3 flex items-center gap-1 text-sm text-muted-foreground">
-          <span>Joined {format(joinedDate, "MMM yyyy")}</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          {profile.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" />
+              {profile.location}
+            </span>
+          )}
+          {profile.website &&
+            (() => {
+              const url = profile.website.startsWith("http")
+                ? profile.website
+                : `https://${profile.website}`;
+              const display = profile.website.replace(/^https?:\/\//, "");
+              return (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-primary hover:underline"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  {display}
+                </a>
+              );
+            })()}
+          <span className="flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5" />
+            Joined {format(joinedDate, "MMM yyyy")}
+          </span>
         </div>
 
         <div className="mt-2 flex gap-4 text-sm">

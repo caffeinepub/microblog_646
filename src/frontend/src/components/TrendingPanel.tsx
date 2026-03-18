@@ -57,17 +57,17 @@ export function TrendingPanel() {
             <div className="divide-y">
               {trending.map((item) => (
                 <Link
-                  key={item.tag}
+                  key={item[0]}
                   to="/hashtag/$tag"
-                  params={{ tag: item.tag }}
+                  params={{ tag: item[0] }}
                   className="block px-4 py-3 transition-colors hover:bg-muted/50"
                 >
                   <span className="text-xs text-muted-foreground">
                     Trending
                   </span>
-                  <p className="font-bold">#{item.tag}</p>
+                  <p className="font-bold">#{item[0]}</p>
                   <span className="text-xs text-muted-foreground">
-                    {item.count.toString()} posts
+                    {item[1].toString()} posts
                   </span>
                 </Link>
               ))}

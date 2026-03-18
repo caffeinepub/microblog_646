@@ -18,6 +18,7 @@ export interface ArtistPageResponse {
   'createdAt' : Time,
   'tier' : string,
   'bandName' : string,
+  'website' : [] | [string],
   'updatedAt' : Time,
   'genre' : string,
   'musicLinks' : Array<string>,
@@ -26,94 +27,20 @@ export interface ArtistPageResponse {
   'followingCount' : bigint,
   'isFollowedByCurrentUser' : boolean,
   'profilePictureHash' : [] | [ExternalBlob],
+  'location' : [] | [string],
 }
-export type AuthorIdentity = { 'fan' : null } |
-  { 'artist' : null };
 export type ExternalBlob = Uint8Array;
-export interface FollowUserResponse {
-  'principal' : Principal,
-  'username' : string,
-  'displayName' : string,
-  'profilePictureHash' : [] | [ExternalBlob],
-}
-export interface Notification {
-  'id' : bigint,
-  'notificationType' : NotificationType,
-  'createdAt' : Time,
-  'isRead' : boolean,
-  'actorUsername' : string,
-  'actorPrincipal' : Principal,
-}
-export type NotificationType = { 'repost' : bigint } |
-  { 'like' : bigint } |
-  { 'quote' : bigint } |
-  { 'mention' : bigint } |
-  { 'reply' : bigint } |
-  { 'follow' : null };
-export interface PaginatedFollows {
-  'nextOffset' : [] | [bigint],
-  'hasMore' : boolean,
-  'users' : Array<FollowUserResponse>,
-}
-export interface PaginatedNotifications {
-  'hasMore' : boolean,
-  'notifications' : Array<Notification>,
-  'nextCursor' : [] | [bigint],
-}
-export interface PaginatedPosts {
-  'hasMore' : boolean,
-  'posts' : Array<PostResponse>,
-  'nextCursor' : [] | [bigint],
-}
-export interface PostResponse {
-  'id' : bigint,
-  'postType' : PostType,
-  'authorUsername' : string,
-  'likeCount' : bigint,
-  'isRepostedByCurrentUser' : boolean,
-  'authorProfilePictureHash' : [] | [ExternalBlob],
-  'repostCount' : bigint,
-  'createdAt' : Time,
-  'text' : string,
-  'author' : Principal,
-  'mediaHash' : [] | [ExternalBlob],
-  'replyCount' : bigint,
-  'authorIdentity' : AuthorIdentity,
-  'mediaType' : [] | [string],
-  'editedAt' : [] | [Time],
-  'authorDisplayName' : string,
-  'isLikedByCurrentUser' : boolean,
-}
-export type PostType = { 'repost' : bigint } |
-  { 'quote' : bigint } |
-  { 'original' : null } |
-  { 'reply' : bigint };
 export type Time = bigint;
-export interface TrendingHashtag { 'tag' : string, 'count' : bigint }
 export interface UserProfile {
   'bio' : string,
   'username' : string,
   'displayName' : string,
   'createdAt' : Time,
+  'website' : [] | [string],
   'updatedAt' : Time,
   'headerImageHash' : [] | [ExternalBlob],
   'profilePictureHash' : [] | [ExternalBlob],
-}
-export interface UserProfileResponse {
-  'bio' : string,
-  'isBlockedByCurrentUser' : boolean,
-  'principal' : Principal,
-  'username' : string,
-  'displayName' : string,
-  'isMutedByCurrentUser' : boolean,
-  'followersCount' : bigint,
-  'createdAt' : Time,
-  'updatedAt' : Time,
-  'headerImageHash' : [] | [ExternalBlob],
-  'followingCount' : bigint,
-  'isFollowedByCurrentUser' : boolean,
-  'profilePictureHash' : [] | [ExternalBlob],
-  'postsCount' : bigint,
+  'location' : [] | [string],
 }
 export interface _CaffeineStorageCreateCertificateResult {
   'method' : string,
@@ -142,35 +69,19 @@ export interface _SERVICE {
     _CaffeineStorageRefillResult
   >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
-  'blockUser' : ActorMethod<[Principal], undefined>,
   'checkUsernameAvailability' : ActorMethod<[string], boolean>,
   'createOrUpdateArtistPage' : ActorMethod<
-    [string, string, string, string, Array<string>, [] | [string]],
+    [
+      string,
+      string,
+      string,
+      string,
+      Array<string>,
+      [] | [string],
+      [] | [string],
+      [] | [string],
+    ],
     undefined
-  >,
-  'createPost' : ActorMethod<
-    [string, [] | [ExternalBlob], [] | [string], boolean],
-    PostResponse
-  >,
-  'createReply' : ActorMethod<
-    [bigint, string, [] | [ExternalBlob], [] | [string]],
-    PostResponse
-  >,
-  'deletePost' : ActorMethod<[bigint], undefined>,
-  'editPost' : ActorMethod<[bigint, string], PostResponse>,
-  'followArtist' : ActorMethod<[Principal], undefined>,
-  'followUser' : ActorMethod<[Principal], undefined>,
-  'getArtistFeed' : ActorMethod<
-    [Principal, [] | [bigint], bigint],
-    PaginatedPosts
-  >,
-  'getArtistFollowers' : ActorMethod<
-    [Principal, bigint, bigint],
-    PaginatedFollows
-  >,
-  'getArtistFollowing' : ActorMethod<
-    [Principal, bigint, bigint],
-    PaginatedFollows
   >,
   'getArtistPage' : ActorMethod<[], [] | [ArtistPageResponse]>,
   'getArtistPageByPrincipal' : ActorMethod<
@@ -178,52 +89,12 @@ export interface _SERVICE {
     [] | [ArtistPageResponse]
   >,
   'getArtistPageByUsername' : ActorMethod<[string], [] | [ArtistPageResponse]>,
-  'getFollowers' : ActorMethod<[string, bigint, bigint], PaginatedFollows>,
-  'getFollowing' : ActorMethod<[string, bigint, bigint], PaginatedFollows>,
-  'getGlobalFeed' : ActorMethod<[[] | [bigint], bigint], PaginatedPosts>,
-  'getHomeFeed' : ActorMethod<[[] | [bigint], bigint], PaginatedPosts>,
-  'getNotifications' : ActorMethod<
-    [[] | [bigint], bigint],
-    PaginatedNotifications
-  >,
-  'getPost' : ActorMethod<[bigint], [] | [PostResponse]>,
-  'getPostsByHashtag' : ActorMethod<
-    [string, [] | [bigint], bigint],
-    PaginatedPosts
-  >,
-  'getPostsByPrincipal' : ActorMethod<
-    [Principal, [] | [bigint], bigint],
-    PaginatedPosts
-  >,
-  'getPostsByUsername' : ActorMethod<
-    [string, [] | [bigint], bigint],
-    PaginatedPosts
-  >,
   'getPrincipalByUsername' : ActorMethod<[string], [] | [Principal]>,
   'getProfile' : ActorMethod<[], [] | [UserProfile]>,
-  'getProfileByUsername' : ActorMethod<[string], [] | [UserProfileResponse]>,
-  'getReplies' : ActorMethod<[bigint, [] | [bigint], bigint], PaginatedPosts>,
-  'getTrendingHashtags' : ActorMethod<[bigint], Array<TrendingHashtag>>,
-  'getUnreadNotificationCount' : ActorMethod<[], bigint>,
-  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfileResponse]>,
-  'likePost' : ActorMethod<[bigint], undefined>,
-  'markAllNotificationsRead' : ActorMethod<[], undefined>,
-  'markNotificationRead' : ActorMethod<[bigint], undefined>,
-  'muteUser' : ActorMethod<[Principal], undefined>,
-  'quotePost' : ActorMethod<
-    [bigint, string, [] | [ExternalBlob], [] | [string]],
-    PostResponse
+  'setProfile' : ActorMethod<
+    [string, string, string, [] | [string], [] | [string]],
+    undefined
   >,
-  'repostPost' : ActorMethod<[bigint], PostResponse>,
-  'searchPosts' : ActorMethod<[string, [] | [bigint], bigint], PaginatedPosts>,
-  'searchUsers' : ActorMethod<[string, bigint], Array<UserProfileResponse>>,
-  'setProfile' : ActorMethod<[string, string, string], undefined>,
-  'unblockUser' : ActorMethod<[Principal], undefined>,
-  'undoRepost' : ActorMethod<[bigint], undefined>,
-  'unfollowArtist' : ActorMethod<[Principal], undefined>,
-  'unfollowUser' : ActorMethod<[Principal], undefined>,
-  'unlikePost' : ActorMethod<[bigint], undefined>,
-  'unmuteUser' : ActorMethod<[Principal], undefined>,
   'updateArtistHeaderImage' : ActorMethod<[[] | [ExternalBlob]], undefined>,
   'updateArtistProfilePicture' : ActorMethod<[[] | [ExternalBlob]], undefined>,
   'updateHeaderImage' : ActorMethod<[[] | [ExternalBlob]], undefined>,

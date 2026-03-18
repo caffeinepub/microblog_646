@@ -30,6 +30,8 @@ interface EditProfileDialogProps {
     username: string;
     displayName: string;
     bio: string;
+    location?: string;
+    website?: string;
     profilePictureHash?: { getDirectURL(): string } | null;
     headerImageHash?: { getDirectURL(): string } | null;
   };
@@ -42,6 +44,8 @@ export function EditProfileDialog({
 }: EditProfileDialogProps) {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
+  const [location, setLocation] = useState("");
+  const [website, setWebsite] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -73,11 +77,19 @@ export function EditProfileDialog({
     if (open) {
       setDisplayName(profile.displayName);
       setBio(profile.bio);
+      setLocation(profile.location ?? "");
+      setWebsite(profile.website ?? "");
       setError("");
       removeAvatarImage();
       removeHeaderImage();
     }
-  }, [open, profile.bio, profile.displayName]);
+  }, [
+    open,
+    profile.bio,
+    profile.displayName,
+    profile.location,
+    profile.website,
+  ]);
 
   const currentAvatarUrl = profile.profilePictureHash?.getDirectURL() ?? null;
   const currentHeaderUrl = profile.headerImageHash?.getDirectURL() ?? null;
@@ -112,18 +124,13 @@ export function EditProfileDialog({
         }
       }
 
-      const trimmedDisplayName = displayName.trim();
-      const trimmedBio = bio.trim();
-      if (
-        trimmedDisplayName !== profile.displayName ||
-        trimmedBio !== profile.bio
-      ) {
-        await setProfile({
-          username: profile.username,
-          displayName: trimmedDisplayName,
-          bio: trimmedBio,
-        });
-      }
+      await setProfile({
+        username: profile.username,
+        displayName: displayName.trim(),
+        bio: bio.trim(),
+        location: location.trim() || null,
+        website: website.trim() || null,
+      });
 
       toast.success("Profile updated");
       onOpenChange(false);
@@ -241,6 +248,7 @@ export function EditProfileDialog({
               placeholder="Your name"
               maxLength={50}
               disabled={isSaving}
+              data-ocid="profile-edit.input"
             />
             <p className="text-right text-xs text-muted-foreground">
               {displayName.length}/50
@@ -258,15 +266,56 @@ export function EditProfileDialog({
               maxLength={160}
               rows={3}
               disabled={isSaving}
+              data-ocid="profile-edit.textarea"
             />
             <p className="text-right text-xs text-muted-foreground">
               {bio.length}/160
             </p>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {/* Location */}
+          <div className="space-y-2">
+            <Label htmlFor="editLocation">Location</Label>
+            <Input
+              id="editLocation"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Austin, TX"
+              maxLength={100}
+              disabled={isSaving}
+              data-ocid="profile-edit.location_input"
+            />
+          </div>
 
-          <Button type="submit" className="w-full" disabled={!canSubmit}>
+          {/* Website */}
+          <div className="space-y-2">
+            <Label htmlFor="editWebsite">Website</Label>
+            <Input
+              id="editWebsite"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="yourwebsite.com"
+              maxLength={200}
+              disabled={isSaving}
+              data-ocid="profile-edit.website_input"
+            />
+          </div>
+
+          {error && (
+            <p
+              className="text-sm text-destructive"
+              data-ocid="profile-edit.error_state"
+            >
+              {error}
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={!canSubmit}
+            data-ocid="profile-edit.save_button"
+          >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
             {isSaving ? "Saving..." : "Save"}
           </Button>

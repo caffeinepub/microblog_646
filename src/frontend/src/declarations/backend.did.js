@@ -19,53 +19,8 @@ export const _CaffeineStorageRefillResult = IDL.Record({
   'success' : IDL.Opt(IDL.Bool),
   'topped_up_amount' : IDL.Opt(IDL.Nat),
 });
-export const ExternalBlob = IDL.Vec(IDL.Nat8);
-export const PostType = IDL.Variant({
-  'repost' : IDL.Nat,
-  'quote' : IDL.Nat,
-  'original' : IDL.Null,
-  'reply' : IDL.Nat,
-});
 export const Time = IDL.Int;
-export const AuthorIdentity = IDL.Variant({
-  'fan' : IDL.Null,
-  'artist' : IDL.Null,
-});
-export const PostResponse = IDL.Record({
-  'id' : IDL.Nat,
-  'postType' : PostType,
-  'authorUsername' : IDL.Text,
-  'likeCount' : IDL.Nat,
-  'isRepostedByCurrentUser' : IDL.Bool,
-  'authorProfilePictureHash' : IDL.Opt(ExternalBlob),
-  'repostCount' : IDL.Nat,
-  'createdAt' : Time,
-  'text' : IDL.Text,
-  'author' : IDL.Principal,
-  'mediaHash' : IDL.Opt(ExternalBlob),
-  'replyCount' : IDL.Nat,
-  'authorIdentity' : AuthorIdentity,
-  'mediaType' : IDL.Opt(IDL.Text),
-  'editedAt' : IDL.Opt(Time),
-  'authorDisplayName' : IDL.Text,
-  'isLikedByCurrentUser' : IDL.Bool,
-});
-export const PaginatedPosts = IDL.Record({
-  'hasMore' : IDL.Bool,
-  'posts' : IDL.Vec(PostResponse),
-  'nextCursor' : IDL.Opt(IDL.Nat),
-});
-export const FollowUserResponse = IDL.Record({
-  'principal' : IDL.Principal,
-  'username' : IDL.Text,
-  'displayName' : IDL.Text,
-  'profilePictureHash' : IDL.Opt(ExternalBlob),
-});
-export const PaginatedFollows = IDL.Record({
-  'nextOffset' : IDL.Opt(IDL.Nat),
-  'hasMore' : IDL.Bool,
-  'users' : IDL.Vec(FollowUserResponse),
-});
+export const ExternalBlob = IDL.Vec(IDL.Nat8);
 export const ArtistPageResponse = IDL.Record({
   'bio' : IDL.Text,
   'postCount' : IDL.Nat,
@@ -74,6 +29,7 @@ export const ArtistPageResponse = IDL.Record({
   'createdAt' : Time,
   'tier' : IDL.Text,
   'bandName' : IDL.Text,
+  'website' : IDL.Opt(IDL.Text),
   'updatedAt' : Time,
   'genre' : IDL.Text,
   'musicLinks' : IDL.Vec(IDL.Text),
@@ -82,56 +38,18 @@ export const ArtistPageResponse = IDL.Record({
   'followingCount' : IDL.Nat,
   'isFollowedByCurrentUser' : IDL.Bool,
   'profilePictureHash' : IDL.Opt(ExternalBlob),
-});
-export const NotificationType = IDL.Variant({
-  'repost' : IDL.Nat,
-  'like' : IDL.Nat,
-  'quote' : IDL.Nat,
-  'mention' : IDL.Nat,
-  'reply' : IDL.Nat,
-  'follow' : IDL.Null,
-});
-export const Notification = IDL.Record({
-  'id' : IDL.Nat,
-  'notificationType' : NotificationType,
-  'createdAt' : Time,
-  'isRead' : IDL.Bool,
-  'actorUsername' : IDL.Text,
-  'actorPrincipal' : IDL.Principal,
-});
-export const PaginatedNotifications = IDL.Record({
-  'hasMore' : IDL.Bool,
-  'notifications' : IDL.Vec(Notification),
-  'nextCursor' : IDL.Opt(IDL.Nat),
+  'location' : IDL.Opt(IDL.Text),
 });
 export const UserProfile = IDL.Record({
   'bio' : IDL.Text,
   'username' : IDL.Text,
   'displayName' : IDL.Text,
   'createdAt' : Time,
+  'website' : IDL.Opt(IDL.Text),
   'updatedAt' : Time,
   'headerImageHash' : IDL.Opt(ExternalBlob),
   'profilePictureHash' : IDL.Opt(ExternalBlob),
-});
-export const UserProfileResponse = IDL.Record({
-  'bio' : IDL.Text,
-  'isBlockedByCurrentUser' : IDL.Bool,
-  'principal' : IDL.Principal,
-  'username' : IDL.Text,
-  'displayName' : IDL.Text,
-  'isMutedByCurrentUser' : IDL.Bool,
-  'followersCount' : IDL.Nat,
-  'createdAt' : Time,
-  'updatedAt' : Time,
-  'headerImageHash' : IDL.Opt(ExternalBlob),
-  'followingCount' : IDL.Nat,
-  'isFollowedByCurrentUser' : IDL.Bool,
-  'profilePictureHash' : IDL.Opt(ExternalBlob),
-  'postsCount' : IDL.Nat,
-});
-export const TrendingHashtag = IDL.Record({
-  'tag' : IDL.Text,
-  'count' : IDL.Nat,
+  'location' : IDL.Opt(IDL.Text),
 });
 
 export const idlService = IDL.Service({
@@ -161,7 +79,6 @@ export const idlService = IDL.Service({
       [],
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
-  'blockUser' : IDL.Func([IDL.Principal], [], []),
   'checkUsernameAvailability' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
   'createOrUpdateArtistPage' : IDL.Func(
       [
@@ -171,38 +88,11 @@ export const idlService = IDL.Service({
         IDL.Text,
         IDL.Vec(IDL.Text),
         IDL.Opt(IDL.Text),
+        IDL.Opt(IDL.Text),
+        IDL.Opt(IDL.Text),
       ],
       [],
       [],
-    ),
-  'createPost' : IDL.Func(
-      [IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text), IDL.Bool],
-      [PostResponse],
-      [],
-    ),
-  'createReply' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text)],
-      [PostResponse],
-      [],
-    ),
-  'deletePost' : IDL.Func([IDL.Nat], [], []),
-  'editPost' : IDL.Func([IDL.Nat, IDL.Text], [PostResponse], []),
-  'followArtist' : IDL.Func([IDL.Principal], [], []),
-  'followUser' : IDL.Func([IDL.Principal], [], []),
-  'getArtistFeed' : IDL.Func(
-      [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getArtistFollowers' : IDL.Func(
-      [IDL.Principal, IDL.Nat, IDL.Nat],
-      [PaginatedFollows],
-      ['query'],
-    ),
-  'getArtistFollowing' : IDL.Func(
-      [IDL.Principal, IDL.Nat, IDL.Nat],
-      [PaginatedFollows],
-      ['query'],
     ),
   'getArtistPage' : IDL.Func([], [IDL.Opt(ArtistPageResponse)], ['query']),
   'getArtistPageByPrincipal' : IDL.Func(
@@ -215,101 +105,17 @@ export const idlService = IDL.Service({
       [IDL.Opt(ArtistPageResponse)],
       ['query'],
     ),
-  'getFollowers' : IDL.Func(
-      [IDL.Text, IDL.Nat, IDL.Nat],
-      [PaginatedFollows],
-      ['query'],
-    ),
-  'getFollowing' : IDL.Func(
-      [IDL.Text, IDL.Nat, IDL.Nat],
-      [PaginatedFollows],
-      ['query'],
-    ),
-  'getGlobalFeed' : IDL.Func(
-      [IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getHomeFeed' : IDL.Func(
-      [IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getNotifications' : IDL.Func(
-      [IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedNotifications],
-      ['query'],
-    ),
-  'getPost' : IDL.Func([IDL.Nat], [IDL.Opt(PostResponse)], ['query']),
-  'getPostsByHashtag' : IDL.Func(
-      [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getPostsByPrincipal' : IDL.Func(
-      [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getPostsByUsername' : IDL.Func(
-      [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
   'getPrincipalByUsername' : IDL.Func(
       [IDL.Text],
       [IDL.Opt(IDL.Principal)],
       ['query'],
     ),
   'getProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
-  'getProfileByUsername' : IDL.Func(
-      [IDL.Text],
-      [IDL.Opt(UserProfileResponse)],
-      ['query'],
-    ),
-  'getReplies' : IDL.Func(
-      [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'getTrendingHashtags' : IDL.Func(
-      [IDL.Nat],
-      [IDL.Vec(TrendingHashtag)],
-      ['query'],
-    ),
-  'getUnreadNotificationCount' : IDL.Func([], [IDL.Nat], ['query']),
-  'getUserProfile' : IDL.Func(
-      [IDL.Principal],
-      [IDL.Opt(UserProfileResponse)],
-      ['query'],
-    ),
-  'likePost' : IDL.Func([IDL.Nat], [], []),
-  'markAllNotificationsRead' : IDL.Func([], [], []),
-  'markNotificationRead' : IDL.Func([IDL.Nat], [], []),
-  'muteUser' : IDL.Func([IDL.Principal], [], []),
-  'quotePost' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text)],
-      [PostResponse],
+  'setProfile' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
+      [],
       [],
     ),
-  'repostPost' : IDL.Func([IDL.Nat], [PostResponse], []),
-  'searchPosts' : IDL.Func(
-      [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-      [PaginatedPosts],
-      ['query'],
-    ),
-  'searchUsers' : IDL.Func(
-      [IDL.Text, IDL.Nat],
-      [IDL.Vec(UserProfileResponse)],
-      ['query'],
-    ),
-  'setProfile' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
-  'unblockUser' : IDL.Func([IDL.Principal], [], []),
-  'undoRepost' : IDL.Func([IDL.Nat], [], []),
-  'unfollowArtist' : IDL.Func([IDL.Principal], [], []),
-  'unfollowUser' : IDL.Func([IDL.Principal], [], []),
-  'unlikePost' : IDL.Func([IDL.Nat], [], []),
-  'unmuteUser' : IDL.Func([IDL.Principal], [], []),
   'updateArtistHeaderImage' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),
   'updateArtistProfilePicture' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),
   'updateHeaderImage' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),
@@ -330,50 +136,8 @@ export const idlFactory = ({ IDL }) => {
     'success' : IDL.Opt(IDL.Bool),
     'topped_up_amount' : IDL.Opt(IDL.Nat),
   });
-  const ExternalBlob = IDL.Vec(IDL.Nat8);
-  const PostType = IDL.Variant({
-    'repost' : IDL.Nat,
-    'quote' : IDL.Nat,
-    'original' : IDL.Null,
-    'reply' : IDL.Nat,
-  });
   const Time = IDL.Int;
-  const AuthorIdentity = IDL.Variant({ 'fan' : IDL.Null, 'artist' : IDL.Null });
-  const PostResponse = IDL.Record({
-    'id' : IDL.Nat,
-    'postType' : PostType,
-    'authorUsername' : IDL.Text,
-    'likeCount' : IDL.Nat,
-    'isRepostedByCurrentUser' : IDL.Bool,
-    'authorProfilePictureHash' : IDL.Opt(ExternalBlob),
-    'repostCount' : IDL.Nat,
-    'createdAt' : Time,
-    'text' : IDL.Text,
-    'author' : IDL.Principal,
-    'mediaHash' : IDL.Opt(ExternalBlob),
-    'replyCount' : IDL.Nat,
-    'authorIdentity' : AuthorIdentity,
-    'mediaType' : IDL.Opt(IDL.Text),
-    'editedAt' : IDL.Opt(Time),
-    'authorDisplayName' : IDL.Text,
-    'isLikedByCurrentUser' : IDL.Bool,
-  });
-  const PaginatedPosts = IDL.Record({
-    'hasMore' : IDL.Bool,
-    'posts' : IDL.Vec(PostResponse),
-    'nextCursor' : IDL.Opt(IDL.Nat),
-  });
-  const FollowUserResponse = IDL.Record({
-    'principal' : IDL.Principal,
-    'username' : IDL.Text,
-    'displayName' : IDL.Text,
-    'profilePictureHash' : IDL.Opt(ExternalBlob),
-  });
-  const PaginatedFollows = IDL.Record({
-    'nextOffset' : IDL.Opt(IDL.Nat),
-    'hasMore' : IDL.Bool,
-    'users' : IDL.Vec(FollowUserResponse),
-  });
+  const ExternalBlob = IDL.Vec(IDL.Nat8);
   const ArtistPageResponse = IDL.Record({
     'bio' : IDL.Text,
     'postCount' : IDL.Nat,
@@ -382,6 +146,7 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : Time,
     'tier' : IDL.Text,
     'bandName' : IDL.Text,
+    'website' : IDL.Opt(IDL.Text),
     'updatedAt' : Time,
     'genre' : IDL.Text,
     'musicLinks' : IDL.Vec(IDL.Text),
@@ -390,54 +155,19 @@ export const idlFactory = ({ IDL }) => {
     'followingCount' : IDL.Nat,
     'isFollowedByCurrentUser' : IDL.Bool,
     'profilePictureHash' : IDL.Opt(ExternalBlob),
-  });
-  const NotificationType = IDL.Variant({
-    'repost' : IDL.Nat,
-    'like' : IDL.Nat,
-    'quote' : IDL.Nat,
-    'mention' : IDL.Nat,
-    'reply' : IDL.Nat,
-    'follow' : IDL.Null,
-  });
-  const Notification = IDL.Record({
-    'id' : IDL.Nat,
-    'notificationType' : NotificationType,
-    'createdAt' : Time,
-    'isRead' : IDL.Bool,
-    'actorUsername' : IDL.Text,
-    'actorPrincipal' : IDL.Principal,
-  });
-  const PaginatedNotifications = IDL.Record({
-    'hasMore' : IDL.Bool,
-    'notifications' : IDL.Vec(Notification),
-    'nextCursor' : IDL.Opt(IDL.Nat),
+    'location' : IDL.Opt(IDL.Text),
   });
   const UserProfile = IDL.Record({
     'bio' : IDL.Text,
     'username' : IDL.Text,
     'displayName' : IDL.Text,
     'createdAt' : Time,
+    'website' : IDL.Opt(IDL.Text),
     'updatedAt' : Time,
     'headerImageHash' : IDL.Opt(ExternalBlob),
     'profilePictureHash' : IDL.Opt(ExternalBlob),
+    'location' : IDL.Opt(IDL.Text),
   });
-  const UserProfileResponse = IDL.Record({
-    'bio' : IDL.Text,
-    'isBlockedByCurrentUser' : IDL.Bool,
-    'principal' : IDL.Principal,
-    'username' : IDL.Text,
-    'displayName' : IDL.Text,
-    'isMutedByCurrentUser' : IDL.Bool,
-    'followersCount' : IDL.Nat,
-    'createdAt' : Time,
-    'updatedAt' : Time,
-    'headerImageHash' : IDL.Opt(ExternalBlob),
-    'followingCount' : IDL.Nat,
-    'isFollowedByCurrentUser' : IDL.Bool,
-    'profilePictureHash' : IDL.Opt(ExternalBlob),
-    'postsCount' : IDL.Nat,
-  });
-  const TrendingHashtag = IDL.Record({ 'tag' : IDL.Text, 'count' : IDL.Nat });
   
   return IDL.Service({
     '_caffeineStorageBlobIsLive' : IDL.Func(
@@ -466,7 +196,6 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
-    'blockUser' : IDL.Func([IDL.Principal], [], []),
     'checkUsernameAvailability' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
     'createOrUpdateArtistPage' : IDL.Func(
         [
@@ -476,38 +205,11 @@ export const idlFactory = ({ IDL }) => {
           IDL.Text,
           IDL.Vec(IDL.Text),
           IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
         ],
         [],
         [],
-      ),
-    'createPost' : IDL.Func(
-        [IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text), IDL.Bool],
-        [PostResponse],
-        [],
-      ),
-    'createReply' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text)],
-        [PostResponse],
-        [],
-      ),
-    'deletePost' : IDL.Func([IDL.Nat], [], []),
-    'editPost' : IDL.Func([IDL.Nat, IDL.Text], [PostResponse], []),
-    'followArtist' : IDL.Func([IDL.Principal], [], []),
-    'followUser' : IDL.Func([IDL.Principal], [], []),
-    'getArtistFeed' : IDL.Func(
-        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getArtistFollowers' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Nat],
-        [PaginatedFollows],
-        ['query'],
-      ),
-    'getArtistFollowing' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Nat],
-        [PaginatedFollows],
-        ['query'],
       ),
     'getArtistPage' : IDL.Func([], [IDL.Opt(ArtistPageResponse)], ['query']),
     'getArtistPageByPrincipal' : IDL.Func(
@@ -520,101 +222,17 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(ArtistPageResponse)],
         ['query'],
       ),
-    'getFollowers' : IDL.Func(
-        [IDL.Text, IDL.Nat, IDL.Nat],
-        [PaginatedFollows],
-        ['query'],
-      ),
-    'getFollowing' : IDL.Func(
-        [IDL.Text, IDL.Nat, IDL.Nat],
-        [PaginatedFollows],
-        ['query'],
-      ),
-    'getGlobalFeed' : IDL.Func(
-        [IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getHomeFeed' : IDL.Func(
-        [IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getNotifications' : IDL.Func(
-        [IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedNotifications],
-        ['query'],
-      ),
-    'getPost' : IDL.Func([IDL.Nat], [IDL.Opt(PostResponse)], ['query']),
-    'getPostsByHashtag' : IDL.Func(
-        [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getPostsByPrincipal' : IDL.Func(
-        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getPostsByUsername' : IDL.Func(
-        [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
     'getPrincipalByUsername' : IDL.Func(
         [IDL.Text],
         [IDL.Opt(IDL.Principal)],
         ['query'],
       ),
     'getProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
-    'getProfileByUsername' : IDL.Func(
-        [IDL.Text],
-        [IDL.Opt(UserProfileResponse)],
-        ['query'],
-      ),
-    'getReplies' : IDL.Func(
-        [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'getTrendingHashtags' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(TrendingHashtag)],
-        ['query'],
-      ),
-    'getUnreadNotificationCount' : IDL.Func([], [IDL.Nat], ['query']),
-    'getUserProfile' : IDL.Func(
-        [IDL.Principal],
-        [IDL.Opt(UserProfileResponse)],
-        ['query'],
-      ),
-    'likePost' : IDL.Func([IDL.Nat], [], []),
-    'markAllNotificationsRead' : IDL.Func([], [], []),
-    'markNotificationRead' : IDL.Func([IDL.Nat], [], []),
-    'muteUser' : IDL.Func([IDL.Principal], [], []),
-    'quotePost' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Opt(ExternalBlob), IDL.Opt(IDL.Text)],
-        [PostResponse],
+    'setProfile' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
+        [],
         [],
       ),
-    'repostPost' : IDL.Func([IDL.Nat], [PostResponse], []),
-    'searchPosts' : IDL.Func(
-        [IDL.Text, IDL.Opt(IDL.Nat), IDL.Nat],
-        [PaginatedPosts],
-        ['query'],
-      ),
-    'searchUsers' : IDL.Func(
-        [IDL.Text, IDL.Nat],
-        [IDL.Vec(UserProfileResponse)],
-        ['query'],
-      ),
-    'setProfile' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
-    'unblockUser' : IDL.Func([IDL.Principal], [], []),
-    'undoRepost' : IDL.Func([IDL.Nat], [], []),
-    'unfollowArtist' : IDL.Func([IDL.Principal], [], []),
-    'unfollowUser' : IDL.Func([IDL.Principal], [], []),
-    'unlikePost' : IDL.Func([IDL.Nat], [], []),
-    'unmuteUser' : IDL.Func([IDL.Principal], [], []),
     'updateArtistHeaderImage' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),
     'updateArtistProfilePicture' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),
     'updateHeaderImage' : IDL.Func([IDL.Opt(ExternalBlob)], [], []),

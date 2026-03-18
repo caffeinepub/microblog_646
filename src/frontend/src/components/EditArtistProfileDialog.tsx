@@ -38,6 +38,8 @@ export function EditArtistProfileDialog({
   const [bio, setBio] = useState("");
   const [genre, setGenre] = useState("");
   const [musicLinks, setMusicLinks] = useState<string[]>([]);
+  const [location, setLocation] = useState("");
+  const [website, setWebsite] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -73,6 +75,8 @@ export function EditArtistProfileDialog({
       setMusicLinks(
         artistPage.musicLinks.length > 0 ? [...artistPage.musicLinks] : [""],
       );
+      setLocation(artistPage.location ?? "");
+      setWebsite(artistPage.website ?? "");
       setError("");
       removeAvatarImage();
       removeHeaderImage();
@@ -83,6 +87,8 @@ export function EditArtistProfileDialog({
     artistPage.bio,
     artistPage.genre,
     artistPage.musicLinks,
+    artistPage.location,
+    artistPage.website,
   ]);
 
   const currentAvatarUrl =
@@ -141,6 +147,8 @@ export function EditArtistProfileDialog({
         genre: genre.trim(),
         bio: bio.trim(),
         musicLinks: filteredLinks,
+        location: location.trim() || null,
+        website: website.trim() || null,
       });
 
       toast.success("Artist profile updated");
@@ -307,6 +315,34 @@ export function EditArtistProfileDialog({
             <p className="text-xs text-muted-foreground text-right">
               {bio.length}/500
             </p>
+          </div>
+
+          {/* Location */}
+          <div className="space-y-2">
+            <Label htmlFor="editArtistLocation">Location</Label>
+            <Input
+              id="editArtistLocation"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Austin, TX"
+              maxLength={100}
+              disabled={isSaving}
+              data-ocid="artist-edit.location_input"
+            />
+          </div>
+
+          {/* Website */}
+          <div className="space-y-2">
+            <Label htmlFor="editArtistWebsite">Website</Label>
+            <Input
+              id="editArtistWebsite"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="yourwebsite.com"
+              maxLength={200}
+              disabled={isSaving}
+              data-ocid="artist-edit.website_input"
+            />
           </div>
 
           {/* Music links */}

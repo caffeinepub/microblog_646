@@ -7,11 +7,19 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { ExternalBlob } from "../backend";
+import type { FullBackendInterface } from "../types/extendedBackend";
 import type { PaginatedPosts, Post, UserProfileResponse } from "../utils/types";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const DEFAULT_PAGE_SIZE = 20n;
+
+/** Cast actor to the full interface (includes social methods beyond the generated d.ts) */
+function fullActor(
+  actor: ReturnType<typeof useActor>["actor"],
+): FullBackendInterface {
+  return actor as unknown as FullBackendInterface;
+}
 
 export function useProfile() {
   const { actor, isFetching } = useActor();
@@ -54,13 +62,25 @@ export function useSetProfile() {
       username,
       displayName,
       bio,
+      location,
+      website,
     }: {
       username: string;
       displayName: string;
       bio: string;
+      location?: string | null;
+      website?: string | null;
     }) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.setProfile(username, displayName, bio);
+      // Normalize website: add https:// if no protocol present
+      const normalizedWebsite = normalizeWebsite(website ?? null);
+      await actor.setProfile(
+        username,
+        displayName,
+        bio,
+        location ?? null,
+        normalizedWebsite,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -73,6 +93,14 @@ export function useSetProfile() {
       queryClient.invalidateQueries({ queryKey: ["artistHomeFeed"] });
     },
   });
+}
+
+/** Normalize a website URL: add https:// if no protocol is present */
+function normalizeWebsite(website: string | null): string | null {
+  if (!website || !website.trim()) return null;
+  const trimmed = website.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 export function useUpdateProfilePicture() {
@@ -135,7 +163,12 @@ export function useCreatePost() {
       isArtistPost?: boolean;
     }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.createPost(text, mediaHash, mediaType, isArtistPost);
+      return fullActor(actor).createPost(
+        text,
+        mediaHash,
+        mediaType,
+        isArtistPost,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["globalFeed"] });
@@ -153,7 +186,7 @@ export function useEditPost() {
   return useMutation({
     mutationFn: async ({ postId, text }: { postId: bigint; text: string }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.editPost(postId, text);
+      return fullActor(actor).editPost(postId, text);
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["globalFeed"] });
@@ -174,7 +207,7 @@ export function useDeletePost() {
   return useMutation({
     mutationFn: async (postId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.deletePost(postId);
+      await fullActor(actor).deletePost(postId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["globalFeed"] });
@@ -192,7 +225,7 @@ export function usePost(postId: bigint | null) {
     queryKey: ["post", postId?.toString()],
     queryFn: async () => {
       if (!actor || postId === null) throw new Error("Actor not ready");
-      const result = await actor.getPost(postId);
+      const result = await fullActor(actor).getPost(postId);
       return result ?? null;
     },
     enabled: !!actor && !isFetching && postId !== null,
@@ -206,7 +239,7 @@ export function useGlobalFeed() {
     queryKey: ["globalFeed"],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getGlobalFeed(pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getGlobalFeed(pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -222,7 +255,11 @@ export function useUserPosts(user: Principal | null) {
     queryKey: ["userPosts", user?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || !user) throw new Error("Actor not ready");
-      return actor.getPostsByPrincipal(user, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getPostsByPrincipal(
+        user,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -237,7 +274,7 @@ export function useHomeFeed() {
     queryKey: ["homeFeed"],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getHomeFeed(pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getHomeFeed(pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -253,7 +290,7 @@ export function useUserProfile(user: Principal | null) {
     queryKey: ["userProfile", user?.toString()],
     queryFn: async () => {
       if (!actor || !user) throw new Error("Actor not ready");
-      const result = await actor.getUserProfile(user);
+      const result = await fullActor(actor).getUserProfile(user);
       return result ?? null;
     },
     enabled: !!actor && !isFetching && !!user,
@@ -267,7 +304,7 @@ export function useProfileByUsername(username: string) {
     queryKey: ["profileByUsername", username],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not ready");
-      const result = await actor.getProfileByUsername(username);
+      const result = await fullActor(actor).getProfileByUsername(username);
       return result ?? null;
     },
     enabled: !!actor && !isFetching && username.length > 0,
@@ -281,7 +318,11 @@ export function useFollowers(username: string) {
     queryKey: ["followers", username],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getFollowers(username, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getFollowers(
+        username,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: 0n,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
@@ -296,7 +337,11 @@ export function useFollowing(username: string) {
     queryKey: ["following", username],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getFollowing(username, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getFollowing(
+        username,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: 0n,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
@@ -311,7 +356,11 @@ export function usePostsByUsername(username: string) {
     queryKey: ["postsByUsername", username],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getPostsByUsername(username, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getPostsByUsername(
+        username,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -326,7 +375,7 @@ export function useFollowUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.followUser(user);
+      await fullActor(actor).followUser(user);
     },
     onMutate: async (user) => {
       const userProfileKey = ["userProfile", user.toString()];
@@ -392,7 +441,7 @@ export function useUnfollowUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.unfollowUser(user);
+      await fullActor(actor).unfollowUser(user);
     },
     onMutate: async (user) => {
       const userProfileKey = ["userProfile", user.toString()];
@@ -460,7 +509,7 @@ export function useBlockUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.blockUser(user);
+      await fullActor(actor).blockUser(user);
     },
     onSettled: (_data, _err, user) => {
       queryClient.invalidateQueries({
@@ -481,7 +530,7 @@ export function useUnblockUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.unblockUser(user);
+      await fullActor(actor).unblockUser(user);
     },
     onSettled: (_data, _err, user) => {
       queryClient.invalidateQueries({
@@ -502,7 +551,7 @@ export function useMuteUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.muteUser(user);
+      await fullActor(actor).muteUser(user);
     },
     onSettled: (_data, _err, user) => {
       queryClient.invalidateQueries({
@@ -522,7 +571,7 @@ export function useUnmuteUser() {
   return useMutation({
     mutationFn: async (user: Principal) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.unmuteUser(user);
+      await fullActor(actor).unmuteUser(user);
     },
     onSettled: (_data, _err, user) => {
       queryClient.invalidateQueries({
@@ -542,7 +591,7 @@ export function useReplies(postId: bigint | null) {
     queryKey: ["replies", postId?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || postId === null) throw new Error("Actor not ready");
-      return actor.getReplies(postId, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getReplies(postId, pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -567,7 +616,12 @@ export function useCreateReply() {
       mediaType: string | null;
     }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.createReply(parentPostId, text, mediaHash, mediaType);
+      return fullActor(actor).createReply(
+        parentPostId,
+        text,
+        mediaHash,
+        mediaType,
+      );
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
@@ -689,7 +743,7 @@ export function useLikePost() {
   return useMutation({
     mutationFn: async (postId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.likePost(postId);
+      await fullActor(actor).likePost(postId);
     },
     onMutate: async (postId) => {
       await cancelPostFeedQueries(queryClient, postId);
@@ -719,7 +773,7 @@ export function useUnlikePost() {
   return useMutation({
     mutationFn: async (postId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.unlikePost(postId);
+      await fullActor(actor).unlikePost(postId);
     },
     onMutate: async (postId) => {
       await cancelPostFeedQueries(queryClient, postId);
@@ -749,7 +803,7 @@ export function useRepostPost() {
   return useMutation({
     mutationFn: async (postId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.repostPost(postId);
+      await fullActor(actor).repostPost(postId);
     },
     onMutate: async (postId) => {
       await cancelPostFeedQueries(queryClient, postId);
@@ -789,7 +843,7 @@ export function useQuotePost() {
       mediaType: string | null;
     }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.quotePost(postId, text, mediaHash, mediaType);
+      return fullActor(actor).quotePost(postId, text, mediaHash, mediaType);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["globalFeed"] });
@@ -807,7 +861,7 @@ export function useSearchPosts(query: string) {
     queryKey: ["searchPosts", query],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.searchPosts(query, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).searchPosts(query, pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -822,7 +876,7 @@ export function useSearchUsers(query: string) {
     queryKey: ["searchUsers", query],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.searchUsers(query, 20n);
+      return fullActor(actor).searchUsers(query, 20n);
     },
     enabled: !!actor && !isFetching && query.trim().length > 0,
   });
@@ -835,7 +889,11 @@ export function usePostsByHashtag(tag: string) {
     queryKey: ["postsByHashtag", tag],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getPostsByHashtag(tag, pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getPostsByHashtag(
+        tag,
+        pageParam,
+        DEFAULT_PAGE_SIZE,
+      );
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -850,7 +908,7 @@ export function useTrendingHashtags() {
     queryKey: ["trendingHashtags"],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getTrendingHashtags(10n);
+      return fullActor(actor).getTrendingHashtags(10n);
     },
     enabled: !!actor && !isFetching,
     refetchInterval: 60_000,
@@ -864,7 +922,7 @@ export function useNotifications() {
     queryKey: ["notifications"],
     queryFn: async ({ pageParam }) => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getNotifications(pageParam, DEFAULT_PAGE_SIZE);
+      return fullActor(actor).getNotifications(pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -879,7 +937,7 @@ export function useUnreadNotificationCount() {
     queryKey: ["unreadNotificationCount"],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not ready");
-      return actor.getUnreadNotificationCount();
+      return fullActor(actor).getUnreadNotificationCount();
     },
     enabled: !!actor && !isFetching,
     refetchInterval: 30_000,
@@ -893,7 +951,7 @@ export function useMarkNotificationRead() {
   return useMutation({
     mutationFn: async (notifId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.markNotificationRead(notifId);
+      await fullActor(actor).markNotificationRead(notifId);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -911,7 +969,7 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: async () => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.markAllNotificationsRead();
+      await fullActor(actor).markAllNotificationsRead();
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -929,7 +987,7 @@ export function useUndoRepost() {
   return useMutation({
     mutationFn: async (postId: bigint) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor.undoRepost(postId);
+      await fullActor(actor).undoRepost(postId);
     },
     onMutate: async (postId) => {
       await cancelPostFeedQueries(queryClient, postId);
