@@ -33,7 +33,7 @@ export function useProfile() {
       return result ?? null;
     },
     enabled: !!actor && !isFetching && !!identity,
-    retry: 5,
+    retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 }

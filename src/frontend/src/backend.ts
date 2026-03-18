@@ -328,11 +328,16 @@ export class Backend implements backendInterface {
         ));
     }
     async getArtistPage(): Promise<ArtistPageResponse | null> {
-        return this._call(async () => {
-            const result = await this.actor.getArtistPage();
-            if (result.length === 0) return null;
-            return this._convertArtistPageResponse(result[0]);
-        });
+        try {
+            return await this._call(async () => {
+                const result = await this.actor.getArtistPage();
+                if (result.length === 0) return null;
+                return this._convertArtistPageResponse(result[0]);
+            });
+        } catch (e) {
+            console.warn('[BandSpace] getArtistPage() failed, treating as no artist page:', e);
+            return null;
+        }
     }
     async getArtistPageByPrincipal(arg0: Principal): Promise<ArtistPageResponse | null> {
         return this._call(async () => {
@@ -355,22 +360,27 @@ export class Backend implements backendInterface {
         });
     }
     async getProfile(): Promise<UserProfile | null> {
-        return this._call(async () => {
-            const result = await this.actor.getProfile();
-            if (result.length === 0) return null;
-            const r = result[0];
-            return {
-                bio: r.bio,
-                username: r.username,
-                displayName: r.displayName,
-                createdAt: r.createdAt,
-                website: (r.website && r.website.length > 0) ? r.website[0] : undefined,
-                updatedAt: r.updatedAt,
-                headerImageHash: (r.headerImageHash && r.headerImageHash.length > 0) ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
-                profilePictureHash: (r.profilePictureHash && r.profilePictureHash.length > 0) ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
-                location: (r.location && r.location.length > 0) ? r.location[0] : undefined,
-            };
-        });
+        try {
+            return await this._call(async () => {
+                const result = await this.actor.getProfile();
+                if (result.length === 0) return null;
+                const r = result[0];
+                return {
+                    bio: r.bio,
+                    username: r.username,
+                    displayName: r.displayName,
+                    createdAt: r.createdAt,
+                    website: (r.website && r.website.length > 0) ? r.website[0] : undefined,
+                    updatedAt: r.updatedAt,
+                    headerImageHash: (r.headerImageHash && r.headerImageHash.length > 0) ? await this._safeDownloadFile(r.headerImageHash[0]) : undefined,
+                    profilePictureHash: (r.profilePictureHash && r.profilePictureHash.length > 0) ? await this._safeDownloadFile(r.profilePictureHash[0]) : undefined,
+                    location: (r.location && r.location.length > 0) ? r.location[0] : undefined,
+                };
+            });
+        } catch (e) {
+            console.warn('[BandSpace] getProfile() failed, treating as no profile:', e);
+            return null;
+        }
     }
     async setProfile(arg0: string, arg1: string, arg2: string, arg3: string | null, arg4: string | null): Promise<void> {
         return this._call(() => this.actor.setProfile(

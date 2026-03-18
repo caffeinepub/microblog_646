@@ -19,10 +19,7 @@ function AuthenticatedApp() {
     data: profile,
     isLoading: isLoadingProfile,
     isError: isProfileError,
-    refetch: refetchProfile,
   } = useProfile();
-
-  const { clear } = useInternetIdentity();
 
   const hasProfile = profile?.username;
 
@@ -37,23 +34,7 @@ function AuthenticatedApp() {
   if (isProfileError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <p className="text-destructive">Failed to load profile.</p>
-          <Button
-            variant="link"
-            onClick={() => refetchProfile()}
-            className="mt-2 text-sm text-muted-foreground"
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="outline"
-            onClick={clear}
-            className="mt-2 block mx-auto"
-          >
-            Log out and try again
-          </Button>
-        </div>
+        <ProfileSetupDialog />
       </div>
     );
   }
