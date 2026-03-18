@@ -33,9 +33,8 @@ export function useProfile() {
       return result ?? null;
     },
     enabled: !!actor && !isFetching && !!identity,
-    // Retry twice with short delays -- fast feedback over long waits
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
+    retry: 5,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 }
 

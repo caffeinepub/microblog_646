@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link, getRouteApi } from "@tanstack/react-router";
+import { Link, getRouteApi, useNavigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
   Calendar,
@@ -28,6 +28,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useActiveProfile } from "../contexts/ActiveProfileContext";
+import { useArtistPageByUsername } from "../hooks/useArtistPageQueries";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useMediaUpload } from "../hooks/useMediaUpload";
 import {
@@ -69,6 +70,23 @@ export function ProfilePage() {
     isLoading: isLoadingProfile,
     isError: isProfileError,
   } = useProfileByUsername(username);
+
+  const navigate = useNavigate();
+  const { data: artistPage, isLoading: isLoadingArtist } =
+    useArtistPageByUsername(username);
+
+  useEffect(() => {
+    if (!isLoadingProfile && !profile && !isLoadingArtist && artistPage) {
+      navigate({ to: "/artist/$username", params: { username } });
+    }
+  }, [
+    isLoadingProfile,
+    profile,
+    isLoadingArtist,
+    artistPage,
+    navigate,
+    username,
+  ]);
 
   const {
     data: postsData,
@@ -530,10 +548,7 @@ export function ProfilePage() {
         </div>
 
         {profile.bio && (
-          <PostText
-            text={profile.bio}
-            className="mt-3 text-sm whitespace-pre-wrap"
-          />
+          <p className="mt-3 whitespace-pre-wrap text-sm">{profile.bio}</p>
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">

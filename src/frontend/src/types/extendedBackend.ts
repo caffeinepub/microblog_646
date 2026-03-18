@@ -50,6 +50,17 @@ export interface FullBackendInterface extends backendInterface {
     pageSize: bigint,
   ): Promise<PaginatedPosts>;
   getHomeFeed(cursor: bigint | null, pageSize: bigint): Promise<PaginatedPosts>;
+  // Artist home feed (caller-based follows)
+  getArtistHomeFeed(
+    cursor: bigint | null,
+    pageSize: bigint,
+  ): Promise<PaginatedPosts>;
+  // Specific artist's posts (used for profile page)
+  getArtistFeed(
+    principal: Principal,
+    cursor: bigint | null,
+    pageSize: bigint,
+  ): Promise<PaginatedPosts>;
   getPostsByPrincipal(
     user: Principal,
     cursor: bigint | null,
@@ -89,6 +100,20 @@ export interface FullBackendInterface extends backendInterface {
     offset: bigint,
     pageSize: bigint,
   ): Promise<PaginatedFollows>;
+
+  // Artist social
+  getArtistFollowers(
+    principal: Principal,
+    offset: bigint,
+    pageSize: bigint,
+  ): Promise<PaginatedFollows>;
+  getArtistFollowing(
+    principal: Principal,
+    offset: bigint,
+    pageSize: bigint,
+  ): Promise<PaginatedFollows>;
+  followArtist(artistPrincipal: Principal): Promise<void>;
+  unfollowArtist(artistPrincipal: Principal): Promise<void>;
 
   // Replies / interactions
   createReply(
@@ -144,23 +169,4 @@ export interface FullBackendInterface extends backendInterface {
   getUnreadNotificationCount(): Promise<bigint>;
   markNotificationRead(notifId: bigint): Promise<void>;
   markAllNotificationsRead(): Promise<void>;
-
-  // Artist social
-  getArtistFeed(
-    principal: Principal,
-    cursor: bigint | null,
-    pageSize: bigint,
-  ): Promise<PaginatedPosts>;
-  getArtistFollowers(
-    principal: Principal,
-    offset: bigint,
-    pageSize: bigint,
-  ): Promise<PaginatedFollows>;
-  getArtistFollowing(
-    principal: Principal,
-    offset: bigint,
-    pageSize: bigint,
-  ): Promise<PaginatedFollows>;
-  followArtist(artistPrincipal: Principal): Promise<void>;
-  unfollowArtist(artistPrincipal: Principal): Promise<void>;
 }

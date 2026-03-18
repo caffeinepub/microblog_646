@@ -124,6 +124,7 @@ export function useArtistFeed(principal: Principal | null) {
     queryKey: ["artistFeed", principal?.toString()],
     queryFn: async ({ pageParam }) => {
       if (!actor || !principal) throw new Error("Actor not ready");
+      // getArtistFeed(principal, cursor, limit) → maps to getArtistPosts in backend
       return fullActor(actor).getArtistFeed(
         principal,
         pageParam,
@@ -144,11 +145,8 @@ export function useArtistHomeFeed() {
     queryKey: ["artistHomeFeed"],
     queryFn: async ({ pageParam }) => {
       if (!actor || !identity) throw new Error("Actor not ready");
-      return fullActor(actor).getArtistFeed(
-        identity.getPrincipal(),
-        pageParam,
-        DEFAULT_PAGE_SIZE,
-      );
+      // getArtistHomeFeed(cursor, limit) → maps to getArtistFeed in backend (caller-based)
+      return fullActor(actor).getArtistHomeFeed(pageParam, DEFAULT_PAGE_SIZE);
     },
     initialPageParam: null as bigint | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,

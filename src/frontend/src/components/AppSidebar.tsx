@@ -11,6 +11,7 @@ import {
   Moon,
   MoreHorizontal,
   Music,
+  PlusCircle,
   Search,
   Sun,
   User,
@@ -22,6 +23,7 @@ import { useArtistPage } from "../hooks/useArtistPageQueries";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useProfile, useUnreadNotificationCount } from "../hooks/useQueries";
 import { getInitials } from "../utils/formatting";
+import { CreateArtistProfileDialog } from "./CreateArtistProfileDialog";
 
 const STATIC_NAV_ITEMS = [
   { label: "Home", icon: Home, to: "/" },
@@ -46,6 +48,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const queryClient = useQueryClient();
   const { clear } = useInternetIdentity();
   const [isOpen, setIsOpen] = useState(false);
+  const [isCreateArtistOpen, setIsCreateArtistOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
@@ -60,7 +63,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
-  const { activeProfile, setActiveProfile } = useActiveProfile();
+  const { activeProfile } = useActiveProfile();
 
   // Close popup on outside click
   useEffect(() => {
@@ -218,8 +221,11 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                 type="button"
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
                 onClick={() => {
-                  setActiveProfile("fan");
-                  setIsOpen(false);
+                  try {
+                    localStorage.setItem("bandspace_active_profile", "fan");
+                  } catch {}
+                  window.location.hash = "/";
+                  window.location.reload();
                 }}
                 data-ocid="sidebar.fan_account.button"
               >
@@ -263,8 +269,14 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                   type="button"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
                   onClick={() => {
-                    setActiveProfile("artist");
-                    setIsOpen(false);
+                    try {
+                      localStorage.setItem(
+                        "bandspace_active_profile",
+                        "artist",
+                      );
+                    } catch {}
+                    window.location.hash = "/";
+                    window.location.reload();
                   }}
                   data-ocid="sidebar.artist_account.button"
                 >
@@ -297,6 +309,22 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
               )}
 
               <Separator />
+
+              {/* Create Artist Page button — shown only when no artist page exists */}
+              {!artistPage && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
+                  onClick={() => {
+                    setIsCreateArtistOpen(true);
+                    setIsOpen(false);
+                  }}
+                  data-ocid="sidebar.create_artist.button"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Create Artist Page
+                </button>
+              )}
 
               {/* Theme toggle */}
               <button
@@ -364,6 +392,12 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
           </button>
         </div>
       )}
+
+      {/* Create Artist Profile Dialog */}
+      <CreateArtistProfileDialog
+        open={isCreateArtistOpen}
+        onOpenChange={setIsCreateArtistOpen}
+      />
     </div>
   );
 }
