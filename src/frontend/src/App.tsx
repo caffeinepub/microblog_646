@@ -4,7 +4,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "next-themes";
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "sonner";
 import { LandingPage } from "./components/LandingPage";
 import { ProfileSetupDialog } from "./components/ProfileSetupDialog";
@@ -22,34 +22,56 @@ function AuthenticatedApp() {
     refetch,
   } = useProfile();
 
-  const hasProfile = profile?.username;
+  type LoadState = "loading" | "no-profile" | "error" | "ready";
+  const [state, setState] = useState<LoadState>("loading");
 
-  // Still loading or retrying
-  if (isLoadingProfile) {
+  const errorRetryCount = useRef(0);
+  const hasProfile = !!profile?.username;
+
+  // Profile found — go straight to app
+  useEffect(() => {
+    if (hasProfile) {
+      errorRetryCount.current = 0;
+      setState("ready");
+    }
+  }, [hasProfile]);
+
+  // Clean null returned (not an error) — no profile exists, show form immediately
+  useEffect(() => {
+    if (isLoadingProfile || isProfileError || hasProfile) return;
+    // profile is null/undefined and no error — definitive "no profile" signal
+    setState("no-profile");
+  }, [isLoadingProfile, isProfileError, hasProfile]);
+
+  // Error/timeout (ambiguous) — retry up to 3 times with increasing delays
+  useEffect(() => {
+    if (!isProfileError || hasProfile) return;
+
+    const delays = [500, 1500, 3000];
+    const attempt = errorRetryCount.current;
+
+    if (attempt >= delays.length) {
+      setState("no-profile"); // all retries exhausted, treat as no profile
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      errorRetryCount.current += 1;
+      await refetch();
+    }, delays[attempt]);
+
+    return () => clearTimeout(timer);
+  }, [isProfileError, hasProfile, refetch]);
+
+  if (state === "ready" && hasProfile) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading profile...</p>
-      </div>
+      <ActiveProfileProvider>
+        <RouterProvider router={router} />
+      </ActiveProfileProvider>
     );
   }
 
-  // All retries exhausted and the call failed -- don't show setup form,
-  // show a retry prompt so existing users aren't mistaken for new ones.
-  if (isProfileError) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading profile...</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  // Backend explicitly confirmed no profile exists -- this is a new user.
-  if (!hasProfile) {
+  if (state === "no-profile") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <ProfileSetupDialog />
@@ -57,10 +79,31 @@ function AuthenticatedApp() {
     );
   }
 
+  if (state === "error") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+        <p className="text-sm text-muted-foreground">Failed to load profile.</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            errorRetryCount.current = 0;
+            setState("loading");
+            refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // loading / retrying state
   return (
-    <ActiveProfileProvider>
-      <RouterProvider router={router} />
-    </ActiveProfileProvider>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-background">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <p className="text-sm text-muted-foreground">Loading profile...</p>
+    </div>
   );
 }
 

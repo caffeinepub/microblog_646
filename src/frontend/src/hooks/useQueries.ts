@@ -34,7 +34,8 @@ export function useProfile() {
     },
     enabled: !!actor && !isFetching && !!identity,
     retry: 3,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 2000),
+    staleTime: 0,
   });
 }
 
@@ -71,7 +72,6 @@ export function useSetProfile() {
       website?: string | null;
     }) => {
       if (!actor) throw new Error("Actor not ready");
-      // Normalize website: add https:// if no protocol present
       const normalizedWebsite = normalizeWebsite(website ?? null);
       await actor.setProfile(
         username,
@@ -629,7 +629,6 @@ export function useCreateReply() {
       queryClient.invalidateQueries({
         queryKey: ["post", variables.parentPostId.toString()],
       });
-      // Update reply count in feed caches
       updatePostInFeedCache(queryClient, variables.parentPostId, (post) => ({
         ...post,
         replyCount: post.replyCount + 1n,
