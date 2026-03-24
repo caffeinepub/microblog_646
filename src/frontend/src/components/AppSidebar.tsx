@@ -128,7 +128,9 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
           className="flex items-center gap-3 rounded-lg px-3 py-1 transition-opacity hover:opacity-80"
           onClick={onNavigate}
         >
-          <span className="text-xl font-bold tracking-tight">BandSpace</span>
+          <span className="text-xl font-bold tracking-tight">
+            Indie City Social
+          </span>
         </Link>
       </div>
 
@@ -275,7 +277,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                         "artist",
                       );
                     } catch {}
-                    window.location.hash = "/";
+                    window.location.hash = `/artist/${artistPage.username}`;
                     window.location.reload();
                   }}
                   data-ocid="sidebar.artist_account.button"

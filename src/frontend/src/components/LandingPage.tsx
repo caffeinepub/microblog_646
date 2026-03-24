@@ -116,7 +116,7 @@ export function LandingPage() {
       {/* Top bar */}
       <header className="shrink-0 px-6 sm:px-10 lg:px-16 py-5 flex items-center justify-between max-w-7xl mx-auto w-full animate-fade-up">
         <span className="text-xl font-bold text-foreground tracking-tight">
-          MicroBlog
+          Indie City Social
         </span>
         <ThemeToggle />
       </header>

@@ -13,6 +13,7 @@ import { Check, Loader2, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import { useDebounce } from "../hooks/useDebounce";
 import { useCheckUsername, useSetProfile } from "../hooks/useQueries";
 
@@ -23,7 +24,10 @@ export function ProfileSetupDialog() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [usernameError, setUsernameError] = useState("");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
+  const { actor } = useActor();
   const debouncedUsername = useDebounce(username, 400);
   const {
     data: isAvailable,
@@ -85,6 +89,21 @@ export function ProfileSetupDialog() {
     );
   };
 
+  const handleReset = async () => {
+    if (!actor) return;
+    setIsResetting(true);
+    try {
+      await actor.deleteMyProfile();
+      // Clear any stored profile state and reload to fresh signup
+      localStorage.removeItem("bandspace_active_profile");
+      window.location.reload();
+    } catch {
+      toast.error("Failed to reset account. Please try again.");
+      setIsResetting(false);
+      setShowResetConfirm(false);
+    }
+  };
+
   return (
     <Dialog open>
       <DialogContent
@@ -92,89 +111,141 @@ export function ProfileSetupDialog() {
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
-        <DialogHeader>
-          <DialogTitle>Set up your profile</DialogTitle>
-          <DialogDescription>
-            Choose a username and tell people about yourself.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                @
-              </span>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="username"
-                className="pl-7"
-                maxLength={20}
-                disabled={isPending}
-              />
-              {isUsernameValid && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {isCheckingUsername || debouncedUsername !== username ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  ) : isCheckError ? (
-                    <X className="h-4 w-4 text-destructive" />
-                  ) : showAvailability && isAvailable ? (
-                    <Check className="h-4 w-4 text-green-500" />
-                  ) : showAvailability && !isAvailable ? (
-                    <X className="h-4 w-4 text-destructive" />
-                  ) : null}
-                </span>
-              )}
+        {showResetConfirm ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Reset your account?</DialogTitle>
+              <DialogDescription>
+                This will permanently delete your profile and all associated
+                data. You will be able to create a new account with a fresh
+                username.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleReset}
+                disabled={isResetting}
+              >
+                {isResetting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isResetting
+                  ? "Resetting..."
+                  : "Yes, delete everything and start fresh"}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={isResetting}
+              >
+                Cancel
+              </Button>
             </div>
-            {usernameError && (
-              <p className="text-sm text-destructive">{usernameError}</p>
-            )}
-            {showAvailability && !isAvailable && !usernameError && (
-              <p className="text-sm text-destructive">Username is taken</p>
-            )}
-            {showAvailability && isAvailable && !usernameError && (
-              <p className="text-sm text-green-500">Username is available</p>
-            )}
-          </div>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Set up your profile</DialogTitle>
+              <DialogDescription>
+                Choose a username and tell people about yourself.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    @
+                  </span>
+                  <Input
+                    id="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="username"
+                    className="pl-7"
+                    maxLength={20}
+                    disabled={isPending}
+                  />
+                  {isUsernameValid && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {isCheckingUsername || debouncedUsername !== username ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : isCheckError ? (
+                        <X className="h-4 w-4 text-destructive" />
+                      ) : showAvailability && isAvailable ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : showAvailability && !isAvailable ? (
+                        <X className="h-4 w-4 text-destructive" />
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+                {usernameError && (
+                  <p className="text-sm text-destructive">{usernameError}</p>
+                )}
+                {showAvailability && !isAvailable && !usernameError && (
+                  <p className="text-sm text-destructive">Username is taken</p>
+                )}
+                {showAvailability && isAvailable && !usernameError && (
+                  <p className="text-sm text-green-500">
+                    Username is available
+                  </p>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display name</Label>
-            <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Your name"
-              maxLength={50}
-              disabled={isPending}
-            />
-            <p className="text-xs text-muted-foreground text-right">
-              {displayName.length}/50
-            </p>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Display name</Label>
+                <Input
+                  id="displayName"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your name"
+                  maxLength={50}
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {displayName.length}/50
+                </p>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
-            <Textarea
-              id="bio"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell people about yourself (optional)"
-              maxLength={160}
-              rows={3}
-              disabled={isPending}
-            />
-            <p className="text-xs text-muted-foreground text-right">
-              {bio.length}/160
-            </p>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea
+                  id="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell people about yourself (optional)"
+                  maxLength={160}
+                  rows={3}
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {bio.length}/160
+                </p>
+              </div>
 
-          <Button type="submit" className="w-full" disabled={!canSubmit}>
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isPending ? "Creating profile..." : "Create profile"}
-          </Button>
-        </form>
+              <Button type="submit" className="w-full" disabled={!canSubmit}>
+                {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isPending ? "Creating profile..." : "Create profile"}
+              </Button>
+            </form>
+
+            <div className="border-t pt-4">
+              <p className="text-xs text-muted-foreground text-center mb-2">
+                Having trouble? If your account data is corrupted:
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setShowResetConfirm(true)}
+              >
+                Start fresh / Reset account
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

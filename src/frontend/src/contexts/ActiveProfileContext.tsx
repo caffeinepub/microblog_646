@@ -14,18 +14,18 @@ const ActiveProfileContext = createContext<ActiveProfileContextValue | null>(
 
 const STORAGE_KEY = "bandspace_active_profile";
 
+function getInitialProfile(): ActiveProfile {
+  // If the URL hash contains /artist/, we're on an artist page after a profile switch reload
+  const hash = window.location.hash;
+  if (hash.includes("/artist/")) return "artist";
+  return "fan";
+}
+
 export function ActiveProfileProvider({
   children,
 }: { children: React.ReactNode }) {
-  const [activeProfile, setActiveProfileState] = useState<ActiveProfile>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored === "artist" || stored === "fan") return stored;
-    } catch {
-      // ignore
-    }
-    return "fan";
-  });
+  const [activeProfile, setActiveProfileState] =
+    useState<ActiveProfile>(getInitialProfile);
 
   const setActiveProfile = (profile: ActiveProfile) => {
     setActiveProfileState(profile);

@@ -1129,4 +1129,22 @@ actor {
       case (?m) { let result = List.empty<Principal>(); for ((p, _) in m.entries()) { result.add(p) }; result.toArray() };
     };
   };
+
+  public shared ({ caller }) func deleteMyProfile() : async () {
+    requireAuth(caller);
+    switch (userProfiles.get(caller)) {
+      case (?profile) {
+        userProfiles.remove(caller);
+        usernameToUser.remove(toLower(profile.username));
+      };
+      case (null) {};
+    };
+    switch (artistPages.get(caller)) {
+      case (?page) {
+        artistPages.remove(caller);
+        artistUsernameToArtist.remove(toLower(page.username));
+      };
+      case (null) {};
+    };
+  };
 };

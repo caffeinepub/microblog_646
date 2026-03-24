@@ -48,6 +48,7 @@ export interface UserProfile {
 export interface backendInterface {
     checkUsernameAvailability(username: string): Promise<boolean>;
     createOrUpdateArtistPage(username: string, bandName: string, genre: string, bio: string, musicLinks: Array<string>, tier: string | null, location: string | null, website: string | null): Promise<void>;
+    deleteMyProfile(): Promise<void>;
     getArtistPage(): Promise<ArtistPageResponse | null>;
     getArtistPageByPrincipal(principal: Principal): Promise<ArtistPageResponse | null>;
     getArtistPageByUsername(username: string): Promise<ArtistPageResponse | null>;

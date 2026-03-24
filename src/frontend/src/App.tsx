@@ -15,55 +15,60 @@ import { useProfile } from "./hooks/useQueries";
 import { router } from "./router";
 
 function AuthenticatedApp() {
-  const {
-    data: profile,
-    isLoading: isLoadingProfile,
-    isError: isProfileError,
-    refetch,
-  } = useProfile();
+  const { actor } = useActor();
+  const { identity } = useInternetIdentity();
 
   type LoadState = "loading" | "no-profile" | "error" | "ready";
   const [state, setState] = useState<LoadState>("loading");
+  const retryCount = useRef(0);
+  const hasFetched = useRef(false);
 
-  const errorRetryCount = useRef(0);
-  const hasProfile = !!profile?.username;
-
-  // Profile found — go straight to app
   useEffect(() => {
-    if (hasProfile) {
-      errorRetryCount.current = 0;
-      setState("ready");
+    if (!actor || !identity) return;
+
+    let cancelled = false;
+
+    async function loadProfile() {
+      if (!actor) return;
+      try {
+        const result = await actor.getProfile();
+        if (cancelled) return;
+
+        if (result?.username) {
+          // Profile found — open the app
+          setState("ready");
+        } else {
+          // Definitive null — no profile exists, show creation form
+          setState("no-profile");
+        }
+      } catch (_err) {
+        if (cancelled) return;
+
+        // Error/timeout — could be cold start. Retry up to 2 times.
+        if (retryCount.current < 2) {
+          const delay = retryCount.current === 0 ? 600 : 1800;
+          retryCount.current += 1;
+          setTimeout(() => {
+            if (!cancelled) loadProfile();
+          }, delay);
+        } else {
+          // All retries exhausted — show Retry button
+          setState("error");
+        }
+      }
     }
-  }, [hasProfile]);
 
-  // Clean null returned (not an error) — no profile exists, show form immediately
-  useEffect(() => {
-    if (isLoadingProfile || isProfileError || hasProfile) return;
-    // profile is null/undefined and no error — definitive "no profile" signal
-    setState("no-profile");
-  }, [isLoadingProfile, isProfileError, hasProfile]);
-
-  // Error/timeout (ambiguous) — retry up to 3 times with increasing delays
-  useEffect(() => {
-    if (!isProfileError || hasProfile) return;
-
-    const delays = [500, 1500, 3000];
-    const attempt = errorRetryCount.current;
-
-    if (attempt >= delays.length) {
-      setState("no-profile"); // all retries exhausted, treat as no profile
-      return;
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      loadProfile();
     }
 
-    const timer = setTimeout(async () => {
-      errorRetryCount.current += 1;
-      await refetch();
-    }, delays[attempt]);
+    return () => {
+      cancelled = true;
+    };
+  }, [actor, identity]);
 
-    return () => clearTimeout(timer);
-  }, [isProfileError, hasProfile, refetch]);
-
-  if (state === "ready" && hasProfile) {
+  if (state === "ready") {
     return (
       <ActiveProfileProvider>
         <RouterProvider router={router} />
@@ -87,9 +92,9 @@ function AuthenticatedApp() {
           variant="outline"
           size="sm"
           onClick={() => {
-            errorRetryCount.current = 0;
+            retryCount.current = 0;
+            hasFetched.current = false;
             setState("loading");
-            refetch();
           }}
         >
           Retry
@@ -98,7 +103,7 @@ function AuthenticatedApp() {
     );
   }
 
-  // loading / retrying state
+  // loading state
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-background">
       <Loader2 className="w-8 h-8 animate-spin text-primary" />

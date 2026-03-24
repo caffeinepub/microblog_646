@@ -148,6 +148,7 @@ export interface backendInterface {
     updateArtistProfilePicture(pictureHash: ExternalBlob | null): Promise<void>;
     updateHeaderImage(headerImageHash: ExternalBlob | null): Promise<void>;
     updateProfilePicture(pictureHash: ExternalBlob | null): Promise<void>;
+    deleteMyProfile(): Promise<void>;
 }
 import type { ArtistPageResponse as _ArtistPageResponse, ExternalBlob as _ExternalBlob, Time as _Time, UserProfile as _UserProfile, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 
@@ -412,6 +413,9 @@ export class Backend implements backendInterface {
             const candid = arg0 === null ? [] : [await this._uploadFile(arg0)];
             return this.actor.updateProfilePicture(candid);
         });
+    }
+    async deleteMyProfile(): Promise<void> {
+        return this._call(() => this.actor.deleteMyProfile());
     }
 
     // ── Social methods ────────────────────────────────────────────────────────
