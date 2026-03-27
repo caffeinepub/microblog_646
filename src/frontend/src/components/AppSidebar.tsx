@@ -120,6 +120,8 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
     ? currentPath === activeProfilePath
     : false;
 
+  const base = `${window.location.origin}${window.location.pathname}`;
+
   return (
     <div className="flex h-full flex-col">
       <div className="px-3 pt-5 pb-6">
@@ -226,8 +228,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                   try {
                     localStorage.setItem("bandspace_active_profile", "fan");
                   } catch {}
-                  window.location.hash = "/";
-                  window.location.reload();
+                  window.location.href = `${base}#/`;
                 }}
                 data-ocid="sidebar.fan_account.button"
               >
@@ -277,8 +278,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                         "artist",
                       );
                     } catch {}
-                    window.location.hash = `/artist/${artistPage.username}`;
-                    window.location.reload();
+                    window.location.href = `${base}#/artist/${artistPage.username}`;
                   }}
                   data-ocid="sidebar.artist_account.button"
                 >

@@ -11,7 +11,6 @@ import { ProfileSetupDialog } from "./components/ProfileSetupDialog";
 import { ActiveProfileProvider } from "./contexts/ActiveProfileContext";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
-import { useProfile } from "./hooks/useQueries";
 import { router } from "./router";
 
 function AuthenticatedApp() {
@@ -79,7 +78,7 @@ function AuthenticatedApp() {
   if (state === "no-profile") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <ProfileSetupDialog />
+        <ProfileSetupDialog onProfileCreated={() => setState("ready")} />
       </div>
     );
   }

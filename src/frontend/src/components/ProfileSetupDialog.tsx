@@ -19,7 +19,13 @@ import { useCheckUsername, useSetProfile } from "../hooks/useQueries";
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]*$/;
 
-export function ProfileSetupDialog() {
+interface ProfileSetupDialogProps {
+  onProfileCreated?: () => void;
+}
+
+export function ProfileSetupDialog({
+  onProfileCreated,
+}: ProfileSetupDialogProps) {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -81,6 +87,7 @@ export function ProfileSetupDialog() {
       {
         onSuccess: () => {
           toast.success("Profile created!");
+          onProfileCreated?.();
         },
         onError: (error) => {
           toast.error(error.message || "Failed to create profile");
