@@ -40,6 +40,17 @@ function isNavActive(itemTo: string, currentPath: string): boolean {
   return currentPath.startsWith(itemTo);
 }
 
+function switchProfile(profile: "fan" | "artist", targetHash: string) {
+  try {
+    localStorage.setItem("bandspace_active_profile", profile);
+  } catch {}
+  // Use history.replaceState to update the URL without triggering React Router,
+  // then reload — the page refreshes first and lands cleanly on the target route.
+  const base = `${window.location.origin}${window.location.pathname}`;
+  history.replaceState(null, "", `${base}${targetHash}`);
+  window.location.reload();
+}
+
 interface AppSidebarProps {
   onNavigate?: () => void;
 }
@@ -119,8 +130,6 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const isActiveProfileLinkActive = activeProfilePath
     ? currentPath === activeProfilePath
     : false;
-
-  const base = `${window.location.origin}${window.location.pathname}`;
 
   return (
     <div className="flex h-full flex-col">
@@ -224,13 +233,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
               <button
                 type="button"
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
-                onClick={() => {
-                  try {
-                    localStorage.setItem("bandspace_active_profile", "fan");
-                  } catch {}
-                  window.location.href = `${base}#/`;
-                  window.location.reload();
-                }}
+                onClick={() => switchProfile("fan", "#/")}
                 data-ocid="sidebar.fan_account.button"
               >
                 <Avatar className="h-9 w-9 shrink-0">
@@ -272,16 +275,9 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                 <button
                   type="button"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
-                  onClick={() => {
-                    try {
-                      localStorage.setItem(
-                        "bandspace_active_profile",
-                        "artist",
-                      );
-                    } catch {}
-                    window.location.href = `${base}#/artist/${artistPage.username}`;
-                    window.location.reload();
-                  }}
+                  onClick={() =>
+                    switchProfile("artist", `#/artist/${artistPage.username}`)
+                  }
                   data-ocid="sidebar.artist_account.button"
                 >
                   <Avatar className="h-9 w-9 shrink-0">
